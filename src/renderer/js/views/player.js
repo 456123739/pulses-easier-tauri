@@ -146,7 +146,6 @@ const Player = {
     const btn = document.getElementById('btn-start');
     const ready = !!this.state.modpackPath && !!this.state.diff && !this.state.busy;
     btn.disabled = !ready;
-    btn.classList.toggle('is-ready', ready);
     if (ready) setBtnLabel(btn, '开始更新');
   },
 
@@ -156,7 +155,6 @@ const Player = {
 
     const btn = document.getElementById('btn-start');
     btn.disabled = true;
-    btn.classList.remove('is-ready');
     setBtnLabel(btn, '更新中…');
 
     const panel = document.getElementById('progress-panel');
@@ -204,13 +202,11 @@ const Player = {
         ptext.textContent = '更新失败';
         setBtnLabel(btn, '重试');
         btn.disabled = false;
-        btn.classList.add('is-ready');
       }
     } catch (e) {
       Log.error('更新异常：' + e);
       setBtnLabel(btn, '重试');
       btn.disabled = false;
-      btn.classList.add('is-ready');
     } finally {
       this.state.busy = false;
     }

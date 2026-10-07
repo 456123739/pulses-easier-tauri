@@ -30,23 +30,15 @@ const Tooltip = {
     const tw = tip.offsetWidth;
     const th = tip.offsetHeight;
 
-    let below = true;
     let top = r.bottom + 10;
     if (top + th > window.innerHeight - 8) {
-      top = r.top - th - 10;
-      below = false;
+      top = r.top - th - 10;          // 下方装不下就翻到上方
     }
     let left = r.left + 2;
     left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
 
     tip.style.left = left + 'px';
     tip.style.top = top + 'px';
-    if (!below) tip.classList.add('below');
-
-    // 箭头跟着控件左边缘
-    const arrowX = Math.max(10, Math.min(r.left - left + 8, tw - 20));
-    tip.style.setProperty('--arrow-x', arrowX + 'px');
-
     requestAnimationFrame(() => tip.classList.add('is-in'));
   },
 

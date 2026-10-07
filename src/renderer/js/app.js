@@ -203,6 +203,31 @@ function bindShortcuts() {
   });
 }
 
+// ── 动画自检 ──
+// 造一个带过渡的元素，改属性后在中途采样 opacity：
+// 拿到 0~1 之间的中间值 → 过渡确实在跑；拿到 0 或 1 → 过渡没生效。
+function animationSelfTest() {
+  return new Promise(resolve => {
+    try {
+      const el = document.createElement('div');
+      el.style.cssText =
+        'position:fixed;left:-9999px;top:0;width:10px;height:10px;' +
+        'opacity:1;transition:opacity 300ms linear;';
+      document.body.appendChild(el);
+      void el.offsetWidth;
+      el.style.opacity = '0';
+      setTimeout(() => {
+        let mid = 0;
+        try { mid = parseFloat(getComputedStyle(el).opacity); } catch (_) {}
+        el.remove();
+        resolve(mid > 0.02 && mid < 0.98);
+      }, 90);
+    } catch (_) {
+      resolve(false);
+    }
+  });
+}
+
 // ── 启动 ──
 async function boot() {
   Overlay.init();
@@ -257,13 +282,22 @@ async function boot() {
   Recent.renderAll();
   await App.loadWhitelist();
 
-  // 检测系统是否关闭了动画效果（Windows 辅助功能里可关）
+  // ── 动画自检：不再靠猜，用真实过渡测一次 ──
+  // 桌面软件不跟随系统「减少动态效果」开关（那会把动画全砍掉），
+  // 但要把检测结果报出来，方便定位。
   try {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      Log.warn('系统已开启「减少动态效果」→ 动画被系统降级');
-      App.setStatus('提示：Windows 设置 → 辅助功能 → 视觉效果 → 动画效果 已关闭');
-    }
+    const rm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (rm) Log.info('检测到系统「减少动态效果」已开启（本程序不受其影响）');
   } catch (_) { /* 忽略 */ }
+
+  animationSelfTest().then(ok => {
+    if (ok) {
+      Log.info('动画自检：通过');
+    } else {
+      Log.error('动画自检：未通过 —— 过渡没有生效');
+      App.setStatus('动画未生效，请把这条日志反馈给开发者');
+    }
+  });
 
   // 启动动画 → 主界面
   setTimeout(() => {

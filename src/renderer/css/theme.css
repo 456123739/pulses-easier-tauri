@@ -1,105 +1,68 @@
 /* ══════════════════════════════════════════════════════════════
-   theme.css — 设计令牌
-   参考：Awwwards / Dribbble / Mobbin / SaaSFrame 的通用语言
-     · 单一强调色，克制使用；其余靠中性灰阶分层
-     · 表面用「亮度阶梯」而不是重阴影来表达层级
-     · 发丝级描边（6%~10% 白）替代粗边框
-     · 动效统一走 expo-out 弹簧曲线，退场比入场快
+   theme.css — 设计令牌（极简版）
+     · 纯中性灰阶（不带色偏），只有一个强调色
+     · 平面化：不用渐变、不用光晕、不用噪点
+     · 层级靠「表面亮度 + 1px 发丝线」表达
+     · 动效统一走 expo-out，位移幅度大、时长够长，看得清
    ══════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── 表面亮度阶梯（越低越靠后）── */
-  --bg-base:      #08080B;
-  --bg-1:         #0D0D12;
-  --bg-2:         #13131A;
-  --bg-3:         #1A1A23;
-  --bg-4:         #22222D;
-  --bg-inset:     #0A0A0F;
+  /* ── 中性灰阶 ── */
+  --bg:        #0A0A0A;
+  --bg-1:      #101010;
+  --bg-2:      #161616;
+  --bg-3:      #1C1C1C;
+  --bg-4:      #242424;
+  --bg-inset:  #0D0D0D;
 
-  /* ── 发丝描边 ── */
-  --line-1:       rgba(255, 255, 255, 0.055);
-  --line-2:       rgba(255, 255, 255, 0.09);
-  --line-3:       rgba(255, 255, 255, 0.14);
+  /* ── 发丝线 ── */
+  --line-1:    rgba(255, 255, 255, 0.07);
+  --line-2:    rgba(255, 255, 255, 0.12);
+  --line-3:    rgba(255, 255, 255, 0.18);
 
   /* ── 文字 ── */
-  --text-1:       #F2F2F6;
-  --text-2:       #9C9CAC;
-  --text-3:       #63637A;
-  --text-4:       #3E3E50;
+  --text-1:    #EDEDED;
+  --text-2:    #A0A0A0;
+  --text-3:    #6B6B6B;
+  --text-4:    #464646;
 
-  /* ── 强调色（唯一）── */
-  --accent:       #6D5DFF;
-  --accent-hi:    #8B7BFF;
-  --accent-lo:    #5546E0;
-  --accent-soft:  rgba(109, 93, 255, 0.14);
-  --accent-line:  rgba(139, 123, 255, 0.30);
+  /* ── 唯一强调色 ── */
+  --accent:      #4F6BED;
+  --accent-hi:   #6B84FF;
+  --accent-soft: rgba(79, 107, 237, 0.12);
 
-  /* ── 语义色（低饱和，只在必要时出现）── */
-  --ok:           #3DD68C;
-  --ok-soft:      rgba(61, 214, 140, 0.13);
-  --warn:         #FFB454;
-  --warn-soft:    rgba(255, 180, 84, 0.13);
-  --err:          #FF6B6B;
-  --err-soft:     rgba(255, 107, 107, 0.13);
-  --cyan:         #46D9E8;
-  --cyan-soft:    rgba(70, 217, 232, 0.12);
+  /* ── 语义色（低饱和）── */
+  --ok:      #4ADE80;
+  --warn:    #FBBF24;
+  --err:     #F87171;
 
   /* ── 圆角 ── */
-  --r-xs:  6px;
-  --r-sm:  9px;
-  --r-md:  13px;
-  --r-lg:  18px;
-  --r-pill: 999px;
-
-  /* ── 阴影（分层、低不透明度）── */
-  --sh-1: 0 1px 2px rgba(0,0,0,.35);
-  --sh-2: 0 4px 14px rgba(0,0,0,.34), 0 1px 2px rgba(0,0,0,.3);
-  --sh-3: 0 16px 44px rgba(0,0,0,.46), 0 2px 6px rgba(0,0,0,.3);
-  --sh-4: 0 32px 80px rgba(0,0,0,.58);
-  --sh-accent: 0 8px 30px rgba(109, 93, 255, .34);
+  --r-xs: 5px;
+  --r-sm: 7px;
+  --r-md: 10px;
+  --r-lg: 13px;
 
   /* ── 字体 ── */
   --font: "Inter", "Microsoft YaHei UI", "PingFang SC", "Segoe UI",
           system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Cascadia Mono", "Consolas",
-               "DejaVu Sans Mono", monospace;
+  --font-mono: "Cascadia Mono", "Consolas", "DejaVu Sans Mono", monospace;
 
-  /* 模块化字阶（1.2 比例） */
   --t-micro: 10.5px;
   --t-tiny:  11.5px;
   --t-sm:    12.5px;
   --t-base:  13.5px;
   --t-md:    15px;
-  --t-lg:    18px;
-  --t-xl:    23px;
+  --t-lg:    17px;
 
   /* ── 动效曲线 ── */
-  --ease-out:   cubic-bezier(0.16, 1, 0.30, 1);   /* expo-out，入场 */
-  --ease-in:    cubic-bezier(0.55, 0, 1, 0.45);   /* 退场（更快）*/
-  --ease-soft:  cubic-bezier(0.32, 0.72, 0, 1);   /* 弹簧感 */
-  --ease-linear: linear;
+  --ease-out:  cubic-bezier(0.16, 1, 0.30, 1);
+  --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-in:   cubic-bezier(0.55, 0, 1, 0.45);
 
-  /* ── 时长 ── */
-  --d-fast:   120ms;
-  --d-base:   190ms;
-  --d-slow:   300ms;
-  --d-enter:  380ms;
-  --d-exit:   180ms;
-}
-
-/* 无障碍：尊重系统「减少动态效果」 */
-/* 系统开了「减少动态效果」时的温和降级：
-   保留淡入淡出作为状态反馈，只砍掉位移/缩放这类「动」的东西。
-   —— 不要一刀切成 1ms，否则整个界面会像没有动画一样死板。 */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --d-fast: 80ms; --d-base: 100ms; --d-slow: 120ms;
-    --d-enter: 140ms; --d-exit: 100ms;
-  }
-  .view, .step, .panel, .opt, .opt-sep,
-  .cta, .picker, .drop, .splash-logo, .nav-item, .list-item {
-    transform: none !important;
-  }
-  .bg-aurora i { animation: none !important; }
-  .cta-shine, .progress-fill::after { display: none !important; }
+  /* ── 时长（给足，看得清）── */
+  --d-fast:  140ms;
+  --d-base:  220ms;
+  --d-slow:  320ms;
+  --d-enter: 420ms;
+  --d-exit:  240ms;
 }
