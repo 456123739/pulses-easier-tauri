@@ -42,6 +42,32 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ""
 
+      - name: 组装绿色版（免安装 zip）
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.8.6-glass" }
+          $out = "pulses-easier-$ver-portable-win64"
+          New-Item -ItemType Directory -Force -Path "dist/$out" | Out-Null
+          Copy-Item "src-tauri/target/release/pulses-easier.exe" "dist/$out/Pulses Easier.exe"
+          # 标记文件：程序看到它就把配置写到同级 data 目录（真绿色）
+          "portable" | Set-Content "dist/$out/portable.txt" -NoNewline
+          $readme = @(
+            "Pulses Easier 绿色版（免安装）",
+            "",
+            "用法：解压到任意位置，双击「Pulses Easier.exe」即可。",
+            "",
+            "· 配置与数据保存在同级的 data 目录，删除整个文件夹即完全卸载",
+            "· 不写注册表、不碰用户目录、可放 U 盘",
+            "· 需要 WebView2 运行时（Win10 1803+ / Win11 已内置）"
+          ) -join "`r`n"
+          Set-Content "dist/$out/说明.txt" $readme -Encoding UTF8
+          # 用 Get-ChildItem -Force 保证 portable.txt 这类文件也进包
+          Compress-Archive -Path (Get-ChildItem -Force "dist/$out").FullName `
+                           -DestinationPath "dist/$out.zip" -Force
+          Write-Host "绿色版：dist/$out.zip"
+          Get-Item "dist/$out.zip" | Select-Object Name, Length
+
       - name: 列出产物
         shell: pwsh
         run: |
@@ -54,7 +80,7 @@ jobs:
           name: pulses-easier-tauri-windows
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/msi/*.msi
+            dist/*.zip
           if-no-files-found: warn
 
       - name: 挂到 Release
@@ -63,4 +89,5 @@ jobs:
         with:
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
+            dist/*.zip
           prerelease: true

@@ -6,8 +6,40 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-fn app_dir() -> PathBuf {
+/// 配置目录。
+///
+/// 绿色版优先：exe 同级能写就用 `<exe 同级>/data`，
+/// 这样解压到哪就在哪存配置，不碰用户目录、不写注册表。
+/// 装在 Program Files（不可写）时自动退回 ~/.pulses_easier。
+pub fn app_dir() -> PathBuf {
+    if let Some(d) = portable_dir() {
+        return d;
+    }
     dirs::home_dir().unwrap_or_default().join(".pulses_easier")
+}
+
+fn portable_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let base = exe.parent()?;
+
+    // 显式标记优先
+    if base.join("portable.txt").exists() {
+        let d = base.join("data");
+        if std::fs::create_dir_all(&d).is_ok() {
+            return Some(d);
+        }
+        return None;
+    }
+
+    // 没有标记：同级能建 data 就当绿色版（安装到 Program Files 会失败）
+    let d = base.join("data");
+    if d.is_dir() {
+        return Some(d);
+    }
+    if std::fs::create_dir_all(&d).is_ok() {
+        return Some(d);
+    }
+    None
 }
 
 fn app_cfg_path() -> PathBuf {
