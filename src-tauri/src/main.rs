@@ -10,13 +10,10 @@ mod downloader;
 mod eapack;
 mod updater;
 
-use std::sync::atomic::AtomicBool;
-
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .manage(commands::CancelFlag(AtomicBool::new(false)))
         .invoke_handler(tauri::generate_handler![
             commands::app_version,
             commands::db_get_path,

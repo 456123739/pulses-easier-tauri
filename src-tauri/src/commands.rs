@@ -1,17 +1,23 @@
 // commands.rs — Tauri #[command] 注册（对应 Electron ipcMain.handle）
+//
+// 注意：Tauri 的 async 命令**不能带引用参数**（带引用就必须返回 Result，
+// 且宏展开后会有生命周期问题）。所以这里统一：
+//   · 异步命令只收 owned 参数（AppHandle / String / Value）
+//   · 取消标志用模块级 static，不用 State<'_, T>
 
 use serde_json::Value;
 use std::path::PathBuf;
-use tauri::{AppHandle, State};
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::AppHandle;
 
 use crate::db;
-use crate::downloader;
 use crate::differ;
-use crate::updater;
+use crate::downloader;
 use crate::eapack;
+use crate::updater;
 
-pub struct CancelFlag(pub AtomicBool);
+/// 下载取消标志（模块级 static：async 命令里不能借 State）
+static CANCEL: AtomicBool = AtomicBool::new(false);
 
 // ── 版本 ──
 #[tauri::command]
@@ -52,8 +58,11 @@ pub fn db_describe(path: String) -> Value {
 
 #[tauri::command]
 pub fn db_migrate(src: String, dst: String, skip: Option<Vec<String>>) -> Value {
-    db::migrate(&PathBuf::from(&src), &PathBuf::from(&dst),
-                skip.unwrap_or_else(|| vec!["cache".to_string()]))
+    db::migrate(
+        &PathBuf::from(&src),
+        &PathBuf::from(&dst),
+        skip.unwrap_or_else(|| vec!["cache".to_string()]),
+    )
 }
 
 // ── 比对 ──
@@ -64,17 +73,36 @@ pub fn diff_packs(old_root: String, new_root: String) -> Value {
 
 // ── 更新 ──
 #[tauri::command]
-pub fn update_build_plan(diff: Value, checked: Value, strategies: Value,
-                         old_root: String, new_root: String) -> Value {
-    updater::build_plan(diff, checked, strategies,
-                        &PathBuf::from(&old_root), &PathBuf::from(&new_root))
+pub fn update_build_plan(
+    diff: Value,
+    checked: Value,
+    strategies: Value,
+    old_root: String,
+    new_root: String,
+) -> Value {
+    updater::build_plan(
+        diff,
+        checked,
+        strategies,
+        &PathBuf::from(&old_root),
+        &PathBuf::from(&new_root),
+    )
 }
 
 #[tauri::command]
-pub async fn update_execute(app: AppHandle, plan: Value,
-                             old_root: String, new_root: String) -> Value {
-    updater::execute_plan(&app, plan,
-                          &PathBuf::from(&old_root), &PathBuf::from(&new_root)).await
+pub async fn update_execute(
+    app: AppHandle,
+    plan: Value,
+    old_root: String,
+    new_root: String,
+) -> Result<Value, String> {
+    Ok(updater::execute_plan(
+        &app,
+        plan,
+        &PathBuf::from(&old_root),
+        &PathBuf::from(&new_root),
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -89,37 +117,46 @@ pub fn update_estimate(plan: Value, old_root: String) -> Value {
 
 // ── 下载 ──
 #[tauri::command]
-pub async fn dl_start(app: AppHandle, cancel: State<'_, CancelFlag>,
-                       tasks: Value, opts: Value) -> Value {
-    (*cancel).0.store(false, Ordering::SeqCst);
-    downloader::start(&app, tasks, opts).await
+pub async fn dl_start(
+    app: AppHandle,
+    tasks: Value,
+    opts: Value,
+) -> Result<Value, String> {
+    CANCEL.store(false, Ordering::SeqCst);
+    Ok(downloader::start(&app, tasks, opts).await)
 }
 
 #[tauri::command]
-pub fn dl_cancel(cancel: State<'_, CancelFlag>) -> bool {
-    (*cancel).0.store(true, Ordering::SeqCst);
+pub fn dl_cancel() -> bool {
+    CANCEL.store(true, Ordering::SeqCst);
     true
 }
 
 // ── 更新包 ──
 #[tauri::command]
-pub async fn pack_read_entry(path: String, entry: String) -> Option<String> {
-    eapack::read_entry(&PathBuf::from(&path), &entry).await
+pub async fn pack_read_entry(
+    path: String,
+    entry: String,
+) -> Result<Option<String>, String> {
+    Ok(eapack::read_entry(&PathBuf::from(&path), &entry).await)
 }
 
 #[tauri::command]
-pub async fn pack_export(app: AppHandle, opts: Value) -> Value {
-    eapack::export(&app, opts).await
+pub async fn pack_export(app: AppHandle, opts: Value) -> Result<Value, String> {
+    Ok(eapack::export(&app, opts).await)
 }
 
 // ── 文件系统 ──
 #[tauri::command]
 pub fn fs_read_dir(path: String) -> Vec<String> {
-    std::fs::read_dir(&path).map(|entries| {
-        entries.filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().to_string())
-            .collect()
-    }).unwrap_or_default()
+    std::fs::read_dir(&path)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -170,12 +207,12 @@ pub fn fs_hash(path: String, algo: Option<String>) -> Option<String> {
 }
 
 #[tauri::command]
-pub async fn fs_unzip(zip_path: String, dest_dir: String) -> Value {
-    eapack::unzip(&PathBuf::from(&zip_path), &PathBuf::from(&dest_dir)).await
+pub async fn fs_unzip(zip_path: String, dest_dir: String) -> Result<Value, String> {
+    Ok(eapack::unzip(&PathBuf::from(&zip_path), &PathBuf::from(&dest_dir)).await)
 }
 
 #[tauri::command]
 pub fn fs_space(_path: String) -> Value {
-    // 简化版：返回 0 让前端不阻断
+    // 简化版：返回 0，让前端不因空间检查阻断
     serde_json::json!({"free": 0u64, "total": 0u64})
 }
