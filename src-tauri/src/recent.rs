@@ -7,8 +7,9 @@ use std::path::PathBuf;
 
 const MAX_ITEMS: usize = 8;
 
+// 与数据库配置同目录（绿色版在 exe 同级，安装版在用户目录）
 fn config_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".pulses_easier")
+    crate::db::app_dir()
 }
 
 fn recent_file() -> PathBuf {
