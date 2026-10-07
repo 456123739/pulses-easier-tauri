@@ -1,23 +1,17 @@
 // app.js — 主控制器
-// 对应 Python: main.py + main_window.py + sidebar.py + polish.py
-//
-// 模式切换的设计要点（上一版的问题就出在这里）：
-//   ✗ 旧做法：隐藏旧视图 → 等 170ms → 重建侧边栏面板
-//            → 看起来像「闪一下再重载」
-//   ✓ 新做法：两个视图常驻 DOM，只切 class，两边同时过渡；
-//            侧边栏的模式相关项用高度动画「伸出来 / 收回去」，
-//            不销毁、不重建。
+// 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
 const App = {
   identity: 'player',
   _switching: false,
+  _navActive: null,
 
   setStatus(text) {
     const el = document.getElementById('status-text');
     if (el) el.textContent = text;
   },
 
-  // ── 身份切换 ──
+  // ── 身份切换（交叉过渡：淡入快、滑动慢，位移才看得见）──
   switchIdentity(next) {
     if (this._switching || next === this.identity) return;
     this._switching = true;
@@ -25,37 +19,36 @@ const App = {
     const from = document.getElementById(this.identity + '-view');
     const to = document.getElementById(next + '-view');
 
-    // 1) 滑块跟随
+    // 滑块跟随
     document.querySelectorAll('.seg-btn').forEach(b =>
       b.classList.toggle('is-active', b.dataset.id === next));
     const pill = document.getElementById('seg-pill');
     if (pill) pill.classList.toggle('is-right', next === 'developer');
 
-    // 2) 旧视图往左滑出（同时淡出）
+    // 旧视图往左滑出
     from.classList.remove('is-active');
-    from.style.transform = 'translateX(-30px)';
+    from.style.transform = 'translateX(-56px)';
 
-    // 3) 新视图从右滑入（同时淡入）—— 与上一步并发，没有等待
-    to.style.transform = '';           // 清掉上次留下的残留
+    // 新视图从右滑入（并发，无等待）
+    to.style.transform = '';
     void to.offsetWidth;
-    to.style.transform = 'translateX(30px)';
+    to.style.transform = 'translateX(56px)';
     void to.offsetWidth;
     to.classList.add('is-active');
-    to.style.transform = '';           // 交还给 class → 过渡到 none
+    to.style.transform = '';
 
-    // 4) 侧边栏：模式相关项「伸出来 / 收回去」
+    // 侧边栏：模式相关项伸出来 / 收回去
     this._revealModeOptions(next);
 
     this.identity = next;
     Log.attach(document.getElementById(
       next === 'developer' ? 'dev-log-list' : 'log-list'));
     this.setStatus(next === 'developer' ? '开发者模式' : '玩家模式');
-    Log.info(next === 'developer' ? '已切换到开发者模式' : '已切换到玩家模式');
+    Log.debug(next === 'developer' ? '已切换到开发者模式' : '已切换到玩家模式');
 
     this._switching = false;
   },
 
-  // 把侧边栏里 data-mode 与当前身份不符的项收起，相符的展开
   _revealModeOptions(mode, animate = true) {
     let delay = 0;
     document.querySelectorAll('#mode-options .opt, #mode-options .opt-sep')
@@ -65,23 +58,22 @@ const App = {
           Reveal.apply(el, show);
         } else {
           Reveal.set(el, show, show ? delay : 0);
-          if (show) delay += 45;        // 一条条伸出来
+          if (show) delay += 45;
         }
       });
-
-    // 白名单面板整块长出来（仅开发者）
-    const wl = document.getElementById('sb-whitelist');
-    if (wl) {
-      if (animate) {
-        Reveal.set(wl, mode === 'developer', mode === 'developer' ? 120 : 0);
-      } else {
-        Reveal.apply(wl, mode === 'developer');
-      }
-    }
   },
 
-  // ── 侧边栏动作 ──
+  // ── 侧边栏项选中态（图标动画靠 CSS 的 .is-active 驱动）──
+  markNav(id) {
+    document.querySelectorAll('#mode-options .nav-item, #sb-more .nav-item')
+      .forEach(el => el.classList.toggle('is-active', el.id === id));
+    this._navActive = id;
+  },
+
+  // ── 首选项 ──
   async openPrefs() {
+    this.markNav('btn-prefs');
+
     let dbPath = null;
     try { dbPath = await window.pulses.db.getPath(); } catch (_) {}
 
@@ -110,70 +102,104 @@ const App = {
       btn.addEventListener('click', async () => {
         const picked = await window.pulses.dialog.openFolder('选择数据库位置');
         if (!picked) return;
-        if (!dbPath) {
-          const ok = await window.pulses.db.create(picked);
-          if (!ok) {
-            Log.error('创建数据库失败：' + picked);
-            return;
-          }
-          dbPath = picked;
-          value.textContent = dbPath;
-          btn.textContent = '更换位置…';
-          Log.ok('已创建并切换到数据库：' + dbPath);
-          App.setStatus('数据库：' + dbPath);
-          done(dbPath);
+
+        if (dbPath) {
+          const valid = await window.pulses.db.isValid(picked);
+          const ok = await Overlay.confirm('更换数据库位置',
+            valid
+              ? `切换到已有数据库：\n${picked}\n\n当前数据库不会被删除。`
+              : `在这个位置新建数据库并切换过去：\n${picked}\n\n当前数据库不会被删除。`,
+            { confirmText: valid ? '切换' : '新建并切换' });
+          if (!ok) return;
+        }
+
+        const created = await window.pulses.db.create(picked);
+        if (!created) {
+          Log.error('更换数据库位置失败：' + picked);
+          await Overlay.alert('更换失败', '无法使用该位置。', { level: 'error' });
           return;
         }
-        // 已有数据库 → 走迁移/切换流程
-        const valid = await window.pulses.db.isValid(picked);
-        const ok = await Overlay.confirm('更换数据库位置',
-          valid
-            ? `切换到已有数据库：\n${picked}\n\n当前数据库不会被删除。`
-            : `在这个位置新建数据库并切换过去：\n${picked}\n\n当前数据库不会被删除，也不会迁移数据。`,
-          { confirmText: valid ? '切换' : '新建并切换' });
-        if (!ok) return;
-
-        let res;
-        if (valid) {
-          res = await window.pulses.db.create(picked);   // 写入程序配置即完成切换
-        } else {
-          res = await window.pulses.db.create(picked);
-        }
-        if (res) {
-          dbPath = picked;
-          value.textContent = dbPath;
-          Log.ok('数据库位置已更换：' + dbPath);
-          App.setStatus('数据库：' + dbPath);
-          await App.loadWhitelist();
-        } else {
-          Log.error('更换失败');
-          await Overlay.alert('更换失败', '无法使用该位置。', { level: 'error' });
-        }
+        dbPath = picked;
+        value.textContent = dbPath;
+        btn.textContent = '更换位置…';
+        Log.ok('数据库位置已更新：' + dbPath);
+        App.setStatus('数据库：' + dbPath);
+        await App.loadWhitelist();
       });
 
       row.appendChild(main);
       row.appendChild(btn);
       body.appendChild(row);
 
-      // ── 版本 ──
+      // ── 完整日志开关 ──
       const row2 = document.createElement('div');
       row2.className = 'pref-row';
       const main2 = document.createElement('div');
       main2.className = 'pref-main';
       const l2 = document.createElement('div');
       l2.className = 'pref-label';
-      l2.textContent = '版本';
+      l2.textContent = '完整日志';
       const v2 = document.createElement('div');
       v2.className = 'pref-value';
-      v2.textContent = document.getElementById('status-version').textContent || '—';
+      v2.textContent = '显示解压 / 比对 / 打包等过程细节';
       main2.appendChild(l2);
       main2.appendChild(v2);
+
+      const sw = document.createElement('button');
+      sw.className = 'pref-switch' + (Log.isVerbose() ? ' is-on' : '');
+      sw.addEventListener('click', async () => {
+        const on = !Log.isVerbose();
+        Log.setVerbose(on);
+        sw.classList.toggle('is-on', on);
+        await App.saveVerbose(on);
+        Log.ok(on ? '已开启完整日志' : '已关闭完整日志');
+      });
+
       row2.appendChild(main2);
+      row2.appendChild(sw);
       body.appendChild(row2);
+
+      // ── 版本 ──
+      const row3 = document.createElement('div');
+      row3.className = 'pref-row';
+      const main3 = document.createElement('div');
+      main3.className = 'pref-main';
+      const l3 = document.createElement('div');
+      l3.className = 'pref-label';
+      l3.textContent = '版本';
+      const v3 = document.createElement('div');
+      v3.className = 'pref-value';
+      v3.textContent = document.getElementById('status-version').textContent || '—';
+      main3.appendChild(l3);
+      main3.appendChild(v3);
+      row3.appendChild(main3);
+      body.appendChild(row3);
     });
   },
 
+  async saveVerbose(flag) {
+    try {
+      const cfg = await window.pulses.db.loadConfig();
+      if (!cfg) return;
+      cfg.ui = cfg.ui || {};
+      cfg.ui.verbose_log = flag;
+      await window.pulses.db.saveConfig(cfg);
+    } catch (_) { /* 静默 */ }
+  },
+
+  async loadVerbose() {
+    try {
+      const cfg = await window.pulses.db.loadConfig();
+      const on = !!(cfg && cfg.ui && cfg.ui.verbose_log);
+      Log.setVerbose(on);
+    } catch (_) {
+      Log.setVerbose(false);
+    }
+  },
+
+  // ── 其它侧边栏动作 ──
   async cleanCache() {
+    this.markNav('btn-clean-cache');
     const cfg = await window.pulses.db.loadConfig();
     if (!cfg) {
       await Overlay.alert('提示', '还没有数据库。');
@@ -188,8 +214,9 @@ const App = {
     this.setStatus('缓存清理：待接入');
   },
 
+  // ── 白名单（在开发者端右面板左下角）──
   async loadWhitelist() {
-    const list = document.getElementById('sb-whitelist-list');
+    const list = document.getElementById('whitelist-list');
     if (!list) return;
     let wl = [];
     try {
@@ -200,19 +227,15 @@ const App = {
     list.innerHTML = '';
     if (!wl.length) {
       const e = document.createElement('div');
-      e.className = 'list-empty';
+      e.className = 'wl-empty';
       e.textContent = '暂无条目';
       list.appendChild(e);
       return;
     }
-    wl.forEach((w, i) => {
+    wl.forEach(w => {
       const b = document.createElement('button');
-      b.className = 'list-item';
-      b.style.animation = `softUp 260ms var(--ease-out) ${i * 30}ms both`;
-      const n = document.createElement('span');
-      n.className = 'li-name';
-      n.textContent = w;
-      b.appendChild(n);
+      b.className = 'wl-chip';
+      b.textContent = w;
       b.title = w;
       list.appendChild(b);
     });
@@ -248,28 +271,9 @@ const App = {
   },
 };
 
-// ── 快捷键 ──
-function bindShortcuts() {
-  document.addEventListener('keydown', e => {
-    if (e.ctrlKey && e.key.toLowerCase() === 'o') {
-      e.preventDefault();
-      if (App.identity === 'developer') Developer.pickNew();
-      else Player.pickModpack();
-    }
-    if (e.ctrlKey && e.key === '1') {
-      e.preventDefault();
-      App.switchIdentity('player');
-    }
-    if (e.ctrlKey && e.key === '2') {
-      e.preventDefault();
-      App.switchIdentity('developer');
-    }
-  });
-}
-
 // ── 动画自检 ──
-// 造一个带过渡的元素，改属性后在中途采样 opacity：
-// 拿到 0~1 之间的中间值 → 过渡确实在跑；拿到 0 或 1 → 过渡没生效。
+// 造一个带过渡的元素，改属性后中途采样 opacity：
+// 拿到 0~1 之间 → 过渡确实在跑；拿到 0 或 1 → 过渡没生效。
 function animationSelfTest() {
   return new Promise(resolve => {
     try {
@@ -292,6 +296,19 @@ function animationSelfTest() {
   });
 }
 
+// ── 快捷键 ──
+function bindShortcuts() {
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key.toLowerCase() === 'o') {
+      e.preventDefault();
+      if (App.identity === 'developer') Developer.pickNew();
+      else Player.pickModpack();
+    }
+    if (e.ctrlKey && e.key === '1') { e.preventDefault(); App.switchIdentity('player'); }
+    if (e.ctrlKey && e.key === '2') { e.preventDefault(); App.switchIdentity('developer'); }
+  });
+}
+
 // ── 启动 ──
 async function boot() {
   Overlay.init();
@@ -305,7 +322,6 @@ async function boot() {
   Developer.init();
   bindShortcuts();
 
-  // 侧边栏模式项：按当前身份一次性摆好，不播动画
   App._revealModeOptions('player', false);
 
   document.querySelectorAll('.seg-btn').forEach(b =>
@@ -318,43 +334,30 @@ async function boot() {
   document.getElementById('btn-recent-clear')
     .addEventListener('click', async () => {
       await Recent.clear();
-      Log.info('已清空最近打开');
+      Log.debug('已清空最近打开');
     });
   document.getElementById('btn-whitelist-add')
     .addEventListener('click', () => App.addWhitelist());
 
-  // 侧边栏快捷入口
+  // 侧边栏快捷入口（点完标记选中 → 图标播动画）
   const nav = (id, fn) => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('click', fn);
+    if (el) el.addEventListener('click', () => { App.markNav(id); fn(); });
   };
-  nav('nav-locate',    () => Player.pickModpack());
-  nav('nav-pickpack',  () => Player.pickPack());
-  nav('nav-newpack',   () => Developer.pickNew());
-  nav('nav-oldpack',   () => Developer.pickOld());
-  nav('nav-whitelist', () => {
-    const wl = document.getElementById('sb-whitelist');
-    if (wl) Reveal.set(wl, true);
-    App.addWhitelist();
-  });
+  nav('nav-locate',   () => Player.pickModpack());
+  nav('nav-pickpack', () => Player.pickPack());
+  nav('nav-newpack',  () => Developer.pickNew());
+  nav('nav-oldpack',  () => Developer.pickOld());
 
   await Recent.load();
-  Recent.bind(document.getElementById('sb-recent-list'),
-              p => Player.setModpack(p));
+  Recent.bind(document.getElementById('sb-recent-list'), p => Player.setModpack(p));
   Recent.renderAll();
+  await App.loadVerbose();
   await App.loadWhitelist();
-
-  // ── 动画自检：不再靠猜，用真实过渡测一次 ──
-  // 桌面软件不跟随系统「减少动态效果」开关（那会把动画全砍掉），
-  // 但要把检测结果报出来，方便定位。
-  try {
-    const rm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (rm) Log.info('检测到系统「减少动态效果」已开启（本程序不受其影响）');
-  } catch (_) { /* 忽略 */ }
 
   animationSelfTest().then(ok => {
     if (ok) {
-      Log.info('动画自检：通过');
+      Log.debug('动画自检：通过');
     } else {
       Log.error('动画自检：未通过 —— 过渡没有生效');
       App.setStatus('动画未生效，请把这条日志反馈给开发者');
@@ -370,12 +373,12 @@ async function boot() {
     appEl.classList.remove('is-hidden');
 
     document.querySelectorAll('.panel').forEach((p, i) => {
-      p.style.animation = `panelIn 380ms var(--ease-out) ${120 + i * 55}ms both`;
+      p.style.animation = `panelIn 420ms var(--ease-out) ${120 + i * 60}ms both`;
     });
 
     setTimeout(() => { splash.style.display = 'none'; }, 340);
     App.setStatus('就绪');
-    Log.info('Pulses Easier 已启动');
+    Log.debug('Pulses Easier 已启动');
   }, 1250);
 }
 

@@ -36,7 +36,7 @@ const Developer = {
     document.getElementById('newpack-picked').classList.remove('is-hidden');
     document.getElementById('newpack-name').textContent = info.title;
     document.getElementById('newpack-meta').textContent = info.meta;
-    Log.ok('新版本：' + info.title);
+    Log.debug('新版本：' + info.title);
     await Recent.add(path);
     this._refresh();
   },
@@ -54,7 +54,7 @@ const Developer = {
     document.getElementById('oldpack-picked').classList.remove('is-hidden');
     document.getElementById('oldpack-name').textContent = info.title;
     document.getElementById('oldpack-meta').textContent = info.meta;
-    Log.ok('旧版本：' + info.title);
+    Log.debug('旧版本：' + info.title);
     this._refresh();
   },
 
@@ -84,7 +84,7 @@ const Developer = {
     setBtnLabel(btn, '比对中…');
 
     try {
-      Log.info('比对两个版本…');
+      Log.debug('比对两个版本…');
       const diff = await window.pulses.diff.packs(this.state.oldPath,
                                                   this.state.newPath);
       this.state.diff = diff;
@@ -116,14 +116,14 @@ const Developer = {
       // 选保存位置
       const out = await window.pulses.dialog.saveFile('导出更新包', 'update.eapack');
       if (!out) {
-        Log.warn('已取消导出');
+        Log.debug('已取消导出');
         setBtnLabel(btn, '比对并导出更新包');
         btn.disabled = false;
         return;
       }
 
       setBtnLabel(btn, '打包中…');
-      Log.info('打包更新包…');
+      Log.debug('打包更新包…');
 
       const changelog = document.getElementById('changelog-input').value || '';
       const files = [...(diff.added || []), ...(diff.modified || [])]
@@ -144,7 +144,7 @@ const Developer = {
 
       if (res && res.ok) {
         Log.ok(`导出成功：${res.path}`);
-        Log.info(`大小：${(res.size / 1048576).toFixed(2)} MB`);
+        Log.debug(`大小：${(res.size / 1048576).toFixed(2)} MB`);
         App.setStatus('已导出更新包');
         await Overlay.alert('导出成功',
           `已保存到：\n${res.path}\n\n大小：${(res.size / 1048576).toFixed(2)} MB`);

@@ -72,11 +72,6 @@
                 <span class="nav-ico">📂</span><span>选择旧版本</span>
               </button>
             </div>
-            <div class="opt" data-mode="developer">
-              <button class="nav-item" id="nav-whitelist">
-                <span class="nav-ico">✅</span><span>校验白名单</span>
-              </button>
-            </div>
 
             <div class="opt-sep" data-mode="developer"></div>
 
@@ -84,19 +79,8 @@
               <span class="nav-ico">🧹</span><span>清理缓存</span>
             </button>
             <button class="nav-item" id="btn-prefs">
-              <span class="nav-ico">⚙</span><span>首选项</span>
+              <span class="nav-ico" data-gear>⚙</span><span>首选项</span>
             </button>
-          </div>
-        </section>
-
-        <!-- 校验白名单：开发者模式下整块长出来 -->
-        <section class="panel is-collapsed" id="sb-whitelist">
-          <div class="panel-head">
-            <span class="panel-label">校验白名单</span>
-            <button class="mini-btn" id="btn-whitelist-add">＋</button>
-          </div>
-          <div class="panel-body">
-            <div class="list" id="sb-whitelist-list"></div>
           </div>
         </section>
       </div>
@@ -259,8 +243,21 @@
               <textarea class="md-input" id="changelog-input"
                         placeholder="在这里写本次更新的说明…"></textarea>
 
-              <div class="field-label">日志</div>
-              <div class="log" id="dev-log-list"></div>
+              <div class="bottom-grid">
+                <!-- 左下角：校验白名单（常驻，不再突兀地出现/消失） -->
+                <div class="wl-block">
+                  <div class="wl-head">
+                    <span class="field-label">校验白名单</span>
+                    <button class="mini-btn" id="btn-whitelist-add">＋</button>
+                  </div>
+                  <div class="wl-list" id="whitelist-list"></div>
+                </div>
+
+                <div class="log-block">
+                  <div class="field-label">日志</div>
+                  <div class="log" id="dev-log-list"></div>
+                </div>
+              </div>
             </div>
           </article>
         </div>
