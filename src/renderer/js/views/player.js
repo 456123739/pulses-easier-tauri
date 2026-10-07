@@ -121,6 +121,7 @@ const Player = {
     const nMod = (diff.modified || []).length;
     const nDel = (diff.deleted || []).length;
     Log.ok(`比对完成：新增 ${nAdd} · 修改 ${nMod} · 删除 ${nDel}`);
+    this._renderChanges(diff);
 
     // 更新日志预览
     try {
@@ -137,8 +138,65 @@ const Player = {
     this.state.diff = null;
     document.getElementById('pack-name').textContent = '';
     document.getElementById('btn-clear-pack').classList.add('is-hidden');
+    const cl = document.getElementById('change-list');
+    if (cl) { cl.innerHTML = ''; cl.classList.add('is-hidden'); }
     Log.debug('已清空更新包');
     this._refreshSteps();
+  },
+
+  // ── 变更列表 ──
+  _renderChanges(diff) {
+    const box = document.getElementById('change-list');
+    if (!box) return;
+
+    const add = diff.added || [];
+    const mod = diff.modified || [];
+    const del = diff.deleted || [];
+
+    box.innerHTML = '';
+
+    const sum = document.createElement('div');
+    sum.className = 'change-sum';
+    sum.textContent = `新增 ${add.length} · 修改 ${mod.length} · 删除 ${del.length}`;
+    box.appendChild(sum);
+
+    // 最多渲染 300 行，避免超大批量卡界面
+    const MAX = 300;
+    let n = 0;
+    const push = (list, kind, label) => {
+      for (const f of list) {
+        if (n >= MAX) return;
+        const row = document.createElement('div');
+        row.className = 'change-row';
+        row.style.animationDelay = Math.min(n * 8, 300) + 'ms';
+
+        const badge = document.createElement('span');
+        badge.className = 'change-badge ' + kind;
+        badge.textContent = label;
+
+        const name = document.createElement('span');
+        name.className = 'change-name';
+        name.textContent = f.rel;
+        name.title = f.rel;
+
+        row.appendChild(badge);
+        row.appendChild(name);
+        box.appendChild(row);
+        n++;
+      }
+    };
+    push(add, 'add', '新增');
+    push(mod, 'mod', '修改');
+    push(del, 'del', '删除');
+
+    if (add.length + mod.length + del.length > MAX) {
+      const more = document.createElement('div');
+      more.className = 'change-sum';
+      more.textContent = `… 还有 ${add.length + mod.length + del.length - MAX} 项`;
+      box.appendChild(more);
+    }
+
+    box.classList.remove('is-hidden');
   },
 
   // ── STEP 3 ──
