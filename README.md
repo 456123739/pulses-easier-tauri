@@ -7,7 +7,7 @@ Minecraft 整合包更新器 —— 用 **Tauri 2 + Rust** 重写，前端是纯
 | | Python/CTk 版 | Electron 版 | **Tauri 版** |
 |---|---|---|---|
 | 运行时 | Tkinter | Chromium（~60MB） | **系统 WebView2（0MB）** |
-| 安装包 | 27MB | 76MB | **~5-8MB** |
+| 安装包 | 27MB | 76MB | **2.33 MB** |
 | 动画 | Tk `after` 补间，打包后失效 | CSS，正常 | **CSS，正常** |
 | 玻璃质感 | ctypes 调 Win32 | vibrancy | **windowEffects 原生** |
 
