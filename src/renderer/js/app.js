@@ -1,6 +1,12 @@
 // app.js — 主控制器
 // 对应 Python: main.py + main_window.py + sidebar.py + polish.py
-// 负责：启动流程、身份切换、侧边栏、快捷键、弹层入口
+//
+// 模式切换的设计要点（上一版的问题就出在这里）：
+//   ✗ 旧做法：隐藏旧视图 → 等 170ms → 重建侧边栏面板
+//            → 看起来像「闪一下再重载」
+//   ✓ 新做法：两个视图常驻 DOM，只切 class，两边同时过渡；
+//            侧边栏的模式相关项用高度动画「伸出来 / 收回去」，
+//            不销毁、不重建。
 
 const App = {
   identity: 'player',
@@ -11,51 +17,67 @@ const App = {
     if (el) el.textContent = text;
   },
 
-  // ── 身份切换（滑块跟随 + 视图滑动）──
-  async switchIdentity(next) {
+  // ── 身份切换 ──
+  switchIdentity(next) {
     if (this._switching || next === this.identity) return;
     this._switching = true;
 
-    const oldView = document.getElementById(this.identity + '-view');
-    const newView = document.getElementById(next + '-view');
+    const from = document.getElementById(this.identity + '-view');
+    const to = document.getElementById(next + '-view');
 
-    // 滑块
+    // 1) 滑块跟随
     document.querySelectorAll('.seg-btn').forEach(b =>
       b.classList.toggle('is-active', b.dataset.id === next));
     const pill = document.getElementById('seg-pill');
     if (pill) pill.classList.toggle('is-right', next === 'developer');
 
-    // 白名单只在开发者显示
-    document.getElementById('sb-whitelist')
-      .classList.toggle('is-hidden', next !== 'developer');
+    // 2) 旧视图往左滑出（同时淡出）
+    from.classList.remove('is-active');
+    from.style.transform = 'translateX(-30px)';
 
-    // 旧视图快速退场
-    oldView.classList.remove('is-active');
-    oldView.classList.add('is-out');
-    await new Promise(r => setTimeout(r, 170));
+    // 3) 新视图从右滑入（同时淡入）—— 与上一步并发，没有等待
+    to.style.transform = '';           // 清掉上次留下的残留
+    void to.offsetWidth;
+    to.style.transform = 'translateX(30px)';
+    void to.offsetWidth;
+    to.classList.add('is-active');
+    to.style.transform = '';           // 交还给 class → 过渡到 none
 
-    oldView.classList.add('is-hidden');
-    oldView.classList.remove('is-out');
-
-    // 新视图入场
-    newView.classList.remove('is-hidden');
-    void newView.offsetWidth;              // 强制重排，让 transition 生效
-    newView.classList.add('is-active');
-
-    // 侧边栏面板重新错开入场
-    const panels = Array.from(document.querySelectorAll('.panel'));
-    panels.forEach((p, i) => {
-      p.style.animation = 'none';
-      void p.offsetWidth;
-      p.style.animation = `panelIn 380ms var(--ease-out) ${i * 55}ms both`;
-    });
+    // 4) 侧边栏：模式相关项「伸出来 / 收回去」
+    this._revealModeOptions(next);
 
     this.identity = next;
     Log.attach(document.getElementById(
       next === 'developer' ? 'dev-log-list' : 'log-list'));
     this.setStatus(next === 'developer' ? '开发者模式' : '玩家模式');
     Log.info(next === 'developer' ? '已切换到开发者模式' : '已切换到玩家模式');
+
     this._switching = false;
+  },
+
+  // 把侧边栏里 data-mode 与当前身份不符的项收起，相符的展开
+  _revealModeOptions(mode, animate = true) {
+    let delay = 0;
+    document.querySelectorAll('#mode-options .opt, #mode-options .opt-sep')
+      .forEach(el => {
+        const show = (el.dataset.mode === mode);
+        if (!animate) {
+          Reveal.apply(el, show);
+        } else {
+          Reveal.set(el, show, show ? delay : 0);
+          if (show) delay += 45;        // 一条条伸出来
+        }
+      });
+
+    // 白名单面板整块长出来（仅开发者）
+    const wl = document.getElementById('sb-whitelist');
+    if (wl) {
+      if (animate) {
+        Reveal.set(wl, mode === 'developer', mode === 'developer' ? 120 : 0);
+      } else {
+        Reveal.apply(wl, mode === 'developer');
+      }
+    }
   },
 
   // ── 侧边栏动作 ──
@@ -194,6 +216,9 @@ async function boot() {
   Developer.init();
   bindShortcuts();
 
+  // 侧边栏模式项：按当前身份一次性摆好，不播动画
+  App._revealModeOptions('player', false);
+
   document.querySelectorAll('.seg-btn').forEach(b =>
     b.addEventListener('click', () => App.switchIdentity(b.dataset.id)));
 
@@ -211,12 +236,34 @@ async function boot() {
   document.getElementById('btn-whitelist-add')
     .addEventListener('click', () => App.addWhitelist());
 
+  // 侧边栏快捷入口
+  const nav = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', fn);
+  };
+  nav('nav-locate',    () => Player.pickModpack());
+  nav('nav-pickpack',  () => Player.pickPack());
+  nav('nav-newpack',   () => Developer.pickNew());
+  nav('nav-oldpack',   () => Developer.pickOld());
+  nav('nav-whitelist', () => {
+    const wl = document.getElementById('sb-whitelist');
+    if (wl) Reveal.set(wl, true);
+    App.addWhitelist();
+  });
+
   await Recent.load();
-  // 侧边栏显示全部（8 条），STEP 1 只显示最近 5 条
   Recent.bind(document.getElementById('sb-recent-list'),
               p => Player.setModpack(p));
   Recent.renderAll();
   await App.loadWhitelist();
+
+  // 检测系统是否关闭了动画效果（Windows 辅助功能里可关）
+  try {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      Log.warn('系统已开启「减少动态效果」→ 动画被系统降级');
+      App.setStatus('提示：Windows 设置 → 辅助功能 → 视觉效果 → 动画效果 已关闭');
+    }
+  } catch (_) { /* 忽略 */ }
 
   // 启动动画 → 主界面
   setTimeout(() => {
@@ -226,7 +273,6 @@ async function boot() {
     splash.classList.add('is-out');
     appEl.classList.remove('is-hidden');
 
-    // 侧边栏面板错开入场
     document.querySelectorAll('.panel').forEach((p, i) => {
       p.style.animation = `panelIn 380ms var(--ease-out) ${120 + i * 55}ms both`;
     });

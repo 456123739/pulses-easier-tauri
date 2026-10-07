@@ -88,14 +88,18 @@
 }
 
 /* 无障碍：尊重系统「减少动态效果」 */
+/* 系统开了「减少动态效果」时的温和降级：
+   保留淡入淡出作为状态反馈，只砍掉位移/缩放这类「动」的东西。
+   —— 不要一刀切成 1ms，否则整个界面会像没有动画一样死板。 */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --d-fast: 1ms; --d-base: 1ms; --d-slow: 1ms;
-    --d-enter: 1ms; --d-exit: 1ms;
+    --d-fast: 80ms; --d-base: 100ms; --d-slow: 120ms;
+    --d-enter: 140ms; --d-exit: 100ms;
   }
-  *, *::before, *::after {
-    animation-duration: 1ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
+  .view, .step, .panel, .opt, .opt-sep,
+  .cta, .picker, .drop, .splash-logo, .nav-item, .list-item {
+    transform: none !important;
   }
+  .bg-aurora i { animation: none !important; }
+  .cta-shine, .progress-fill::after { display: none !important; }
 }
