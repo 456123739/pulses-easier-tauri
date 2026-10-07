@@ -8,6 +8,7 @@ mod db;
 mod differ;
 mod downloader;
 mod eapack;
+mod recent;
 mod updater;
 
 fn main() {
@@ -23,6 +24,10 @@ fn main() {
             commands::db_is_valid,
             commands::db_describe,
             commands::db_migrate,
+            commands::recent_load,
+            commands::recent_add,
+            commands::recent_remove,
+            commands::recent_clear,
             commands::diff_packs,
             commands::update_build_plan,
             commands::update_execute,

@@ -1,193 +1,223 @@
-// player.js — 玩家端逻辑
-// 对应 Python: app/ui/player_view.py
+// player.js — 玩家端（STEP 1 / STEP 2 / STEP 3）
+// 对应 Python: app/ui/player_view.py + sidebar 的定位区
 
 const Player = {
   state: {
     modpackPath: null,
-    isLocked: false,
     updateZip: null,
+    extractedDir: null,
     diff: null,
-    plan: null,
+    busy: false,
   },
 
   init() {
-    // 拖入区
+    // STEP 1：选择整合包文件夹
+    document.getElementById('btn-pick-modpack')
+      .addEventListener('click', () => this.pickModpack());
+
+    // STEP 2：拖入 / 点击选择更新包
     const dz = document.getElementById('drop-zone');
-    dz.addEventListener('click', () => this._pickPack());
-    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('click', () => this.pickPack());
+    dz.addEventListener('dragover', e => {
+      e.preventDefault();
+      dz.classList.add('dragover');
+    });
     dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
     dz.addEventListener('drop', e => {
       e.preventDefault();
       dz.classList.remove('dragover');
-      const files = Array.from(e.dataTransfer.files);
-      if (files.length > 0) this._onPackDropped(files[0].path);
+      const f = e.dataTransfer.files[0];
+      if (f && f.path) this.onPackDropped(f.path);
     });
 
-    // 定位按钮
-    document.getElementById('btn-locate').addEventListener('click',
-      () => this._locateModpack());
+    document.getElementById('btn-clear-pack')
+      .addEventListener('click', () => this.clearPack());
 
-    // 开始更新按钮
-    document.getElementById('btn-start').addEventListener('click',
-      () => this._startUpdate());
+    // STEP 3：开始更新
+    document.getElementById('btn-start')
+      .addEventListener('click', () => this.startUpdate());
+
+    // 最近打开（STEP 1 内）
+    Recent.bind(document.getElementById('step1-recent'),
+                p => this.setModpack(p));
   },
 
-  async _locateModpack() {
-    const p = await window.pulses.dialog.openFolder('选择整合包根目录');
+  // ── STEP 1 ──
+  async pickModpack() {
+    const p = await window.pulses.dialog.openFolder('选择整合包文件夹');
     if (!p) return;
-    this.state.modpackPath = p;
-    const info = await window.pulses.files.readModpackInfo(p);
-    document.getElementById('modpack-name').textContent =
-      info.name + (info.version ? ' v' + info.version : '');
-    document.getElementById('status-text').textContent = '已定位：' + info.name;
+    await this.setModpack(p);
   },
 
-  async _pickPack() {
+  async setModpack(path) {
+    this.state.modpackPath = path;
+    let info = { name: baseName(path), version: '', mods: 0 };
+    try { info = await window.pulses.files.readModpackInfo(path) || info; }
+    catch (_) { /* 用默认值 */ }
+
+    const title = info.name + (info.version ? '  v' + info.version : '');
+
+    // STEP 1 已选信息
+    document.getElementById('modpack-picked').classList.remove('is-hidden');
+    document.getElementById('modpack-name').textContent = title;
+    document.getElementById('modpack-meta').textContent =
+      path + (info.mods ? `\n${info.mods} 个 mod` : '');
+
+    // 侧边栏「当前整合包」
+    document.getElementById('sb-modpack-name').textContent = title;
+    document.getElementById('sb-modpack-meta').textContent =
+      path + (info.mods ? ` · ${info.mods} mod` : '');
+
+    App.setStatus('已定位整合包：' + title);
+    Log.ok('已定位整合包：' + title);
+
+    await Recent.add(path);
+    this._refreshSteps();
+  },
+
+  // ── STEP 2 ──
+  async pickPack() {
     const p = await window.pulses.dialog.openFile('选择更新包', [
       { name: '更新包', extensions: ['zip', 'eapack'] },
     ]);
     if (!p) return;
-    this._onPackDropped(p);
+    await this.onPackDropped(p);
   },
 
-  async _onPackDropped(packPath) {
-    this.state.updateZip = packPath;
-    document.getElementById('status-text').textContent =
-      '已加载更新包：' + packPath.split(/[\\/]/).pop();
-
-    // 读取更新包信息
-    const settings = await window.pulses.pack.readSettings(packPath);
-    const manifest = await window.pulses.pack.readManifest(packPath);
-    const changelog = await window.pulses.pack.readChangelog(packPath);
-
-    // 显示更新日志
-    if (changelog) {
-      const preview = document.getElementById('changelog-preview');
-      const content = document.getElementById('changelog-content');
-      content.textContent = changelog;
-      preview.classList.remove('hidden');
-      Motion.slideUp(preview);
+  async onPackDropped(packPath) {
+    if (this.state.busy) {
+      Log.warn('正在处理上一个更新包，请稍候');
+      return;
     }
-
-    // 读取整合包路径
     if (!this.state.modpackPath) {
-      await this._locateModpack();
-      if (!this.state.modpackPath) return;
-    }
-
-    // 解压更新包到临时目录
-    const tmpDir = packPath.replace(/\.[^.]+$/, '') + '_extracted';
-    const unzipResult = await window.pulses.files.unzip(packPath, tmpDir);
-    if (!unzipResult.ok) {
-      await Overlay.alert(null, '解压失败', unzipResult.msg, { level: 'error' });
+      Log.warn('请先在 STEP 1 选择整合包文件夹');
+      App.setStatus('请先选择整合包文件夹（STEP 1）');
       return;
     }
 
-    // 比对
-    const diff = await window.pulses.diff.packs(
-      this.state.modpackPath, tmpDir, {});
+    this.state.updateZip = packPath;
+    document.getElementById('pack-name').textContent = baseName(packPath);
+    document.getElementById('btn-clear-pack').classList.remove('is-hidden');
+    Log.info('已加载更新包：' + baseName(packPath));
+
+    // 解压 → 比对
+    const out = packPath.replace(/\.[^.]+$/, '') + '_pulses_extract';
+    Log.info('解压更新包…');
+    const unzip = await window.pulses.files.unzip(packPath, out);
+    if (!unzip || !unzip.ok) {
+      Log.error('解压失败：' + (unzip && unzip.msg ? unzip.msg : '未知错误'));
+      await Overlay.alert('解压失败', (unzip && unzip.msg) || '未知错误',
+                          { level: 'error' });
+      return;
+    }
+    this.state.extractedDir = out;
+    Log.ok(`解压完成（${unzip.files} 个条目）`);
+
+    Log.info('比对差异…');
+    const diff = await window.pulses.diff.packs(this.state.modpackPath, out);
     this.state.diff = diff;
-    this._renderChangeList(diff);
 
-    // 显示开始更新按钮
+    const nAdd = (diff.added || []).length;
+    const nMod = (diff.modified || []).length;
+    const nDel = (diff.deleted || []).length;
+    Log.ok(`比对完成：新增 ${nAdd} · 修改 ${nMod} · 删除 ${nDel}`);
+
+    // 更新日志预览
+    try {
+      const md = await window.pulses.pack.readChangelog(packPath);
+      if (md) Log.info('更新日志：' + firstLine(md));
+    } catch (_) { /* 没有日志也正常 */ }
+
+    this._refreshSteps();
+  },
+
+  clearPack() {
+    this.state.updateZip = null;
+    this.state.extractedDir = null;
+    this.state.diff = null;
+    document.getElementById('pack-name').textContent = '';
+    document.getElementById('btn-clear-pack').classList.add('is-hidden');
+    Log.info('已清空更新包');
+    this._refreshSteps();
+  },
+
+  // ── STEP 3 ──
+  _refreshSteps() {
     const btn = document.getElementById('btn-start');
-    btn.classList.remove('hidden');
-    Motion.slideUp(btn);
+    const ready = !!this.state.modpackPath && !!this.state.diff && !this.state.busy;
+    btn.disabled = !ready;
+    btn.classList.toggle('is-ready', ready);
+    if (ready) btn.textContent = '开始更新';
   },
 
-  _renderChangeList(diff) {
-    const list = document.getElementById('change-list');
-    list.innerHTML = '';
+  async startUpdate() {
+    if (this.state.busy) return;
+    this.state.busy = true;
 
-    const summary = document.createElement('div');
-    summary.style.cssText = 'padding:8px 10px;font-size:var(--fs-small);color:var(--text-muted);border-bottom:1px solid var(--border);margin-bottom:4px;';
-    summary.textContent = `变更：+${diff.added.length} ~${diff.modified.length} -${diff.deleted.length}`;
-    list.appendChild(summary);
-
-    let idx = 0;
-    for (const f of diff.added) {
-      this._addRow(list, f.rel, 'add', idx++);
-    }
-    for (const f of diff.modified) {
-      this._addRow(list, f.rel, 'mod', idx++);
-    }
-    for (const f of diff.deleted) {
-      this._addRow(list, f.rel, 'del', idx++);
-    }
-  },
-
-  _addRow(parent, rel, type, idx) {
-    const row = document.createElement('div');
-    row.className = 'change-row';
-    row.style.animationDelay = `${idx * 20}ms`;
-
-    const badge = document.createElement('span');
-    badge.className = 'change-badge ' + type;
-    const labels = { add: '新增', mod: '修改', del: '删除' };
-    badge.textContent = labels[type];
-
-    const text = document.createElement('span');
-    text.textContent = rel;
-    text.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-
-    row.appendChild(badge);
-    row.appendChild(text);
-    parent.appendChild(row);
-
-    // 长文本挂 tooltip
-    if (rel.length > 30) {
-      Tooltip.attach(row, rel);
-    }
-  },
-
-  async _startUpdate() {
-    if (!this.state.diff) return;
     const btn = document.getElementById('btn-start');
     btn.disabled = true;
+    btn.classList.remove('is-ready');
     btn.textContent = '更新中…';
 
-    const progressPanel = document.getElementById('progress-panel');
-    progressPanel.classList.remove('hidden');
-    const bar = document.getElementById('progress-bar');
+    const panel = document.getElementById('progress-panel');
+    panel.classList.remove('is-hidden');
+    const fill = document.getElementById('progress-fill');
     const ptext = document.getElementById('progress-text');
 
-    // 监听进度
     window.pulses.update.onProgress(d => {
-      bar.style.width = (d.percent * 100).toFixed(1) + '%';
-      ptext.textContent = `${d.done} / ${d.total}` + (d.moved ? `  ${d.moved} bytes` : '');
+      const pct = ((d.percent || 0) * 100).toFixed(1);
+      fill.style.width = pct + '%';
+      ptext.textContent = `已处理 ${d.done}/${d.total}  ·  ${pct}%`;
     });
 
     const oldRoot = this.state.modpackPath;
-    const newRoot = this.state.updateZip.replace(/\.[^.]+$/, '') + '_extracted';
+    const newRoot = this.state.extractedDir;
 
-    // 构建计划
-    const plan = await window.pulses.update.buildPlan(
-      this.state.diff, { all: true }, {}, oldRoot, newRoot, {});
-    this.state.plan = plan;
+    try {
+      Log.info('构建更新计划…');
+      const plan = await window.pulses.update.buildPlan(
+        this.state.diff, { all: true }, {}, oldRoot, newRoot);
+      const total = (plan.tasks || []).length;
+      Log.info(`计划：${total} 个文件`);
 
-    // 执行
-    const result = await window.pulses.update.execute(plan, oldRoot, newRoot, {});
-    if (result.ok) {
-      bar.style.width = '100%';
-      ptext.textContent = '更新完成 ✓';
-      btn.textContent = '完成';
-      btn.disabled = false;
-      btn.classList.add('hidden');
+      Log.info('开始应用更新…');
+      const res = await window.pulses.update.execute(plan, oldRoot, newRoot);
 
-      // 提示拖入下一个更新包
-      document.getElementById('drop-zone').querySelector('.drop-text')
-        .textContent = '本次更新已全部应用 ✓\n请拖入下一个更新包';
-      this.state.updateZip = null;
-      this.state.diff = null;
+      if (res && res.ok) {
+        fill.style.width = '100%';
+        ptext.textContent = '更新完成 ✓';
+        Log.ok(`更新完成：${res.done} 个文件已处理`);
+        App.setStatus('更新完成');
 
-      setTimeout(() => progressPanel.classList.add('hidden'), 2000);
-    } else {
-      ptext.textContent = '更新失败';
-      btn.disabled = false;
+        // 回到「请拖入下一个更新包」
+        this.clearPack();
+        document.getElementById('drop-zone').querySelector('.drop-text')
+          .textContent = '本次更新已全部应用 ✓\n请拖入下一个更新包';
+        btn.textContent = '已完成';
+        btn.classList.add('is-hidden');
+
+        setTimeout(() => panel.classList.add('is-hidden'), 1800);
+      } else {
+        Log.error('更新失败');
+        ptext.textContent = '更新失败';
+        btn.textContent = '重试';
+        btn.disabled = false;
+        btn.classList.add('is-ready');
+      }
+    } catch (e) {
+      Log.error('更新异常：' + e);
       btn.textContent = '重试';
-      await Overlay.alert(null, '更新失败', result.msg || '未知错误', { level: 'error' });
+      btn.disabled = false;
+      btn.classList.add('is-ready');
+    } finally {
+      this.state.busy = false;
     }
   },
 };
+
+function firstLine(s) {
+  const line = String(s).split('\n').find(l => l.trim());
+  return line ? line.trim().slice(0, 80) : '';
+}
 
 window.Player = Player;

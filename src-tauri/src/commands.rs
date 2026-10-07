@@ -14,6 +14,7 @@ use crate::db;
 use crate::differ;
 use crate::downloader;
 use crate::eapack;
+use crate::recent;
 use crate::updater;
 
 /// 下载取消标志（模块级 static：async 命令里不能借 State）
@@ -63,6 +64,27 @@ pub fn db_migrate(src: String, dst: String, skip: Option<Vec<String>>) -> Value 
         &PathBuf::from(&dst),
         skip.unwrap_or_else(|| vec!["cache".to_string()]),
     )
+}
+
+// ── 最近打开 ──
+#[tauri::command]
+pub fn recent_load() -> Vec<String> {
+    recent::load()
+}
+
+#[tauri::command]
+pub fn recent_add(path: String) -> Vec<String> {
+    recent::add(&path)
+}
+
+#[tauri::command]
+pub fn recent_remove(path: String) -> Vec<String> {
+    recent::remove(&path)
+}
+
+#[tauri::command]
+pub fn recent_clear() -> Vec<String> {
+    recent::clear()
 }
 
 // ── 比对 ──
