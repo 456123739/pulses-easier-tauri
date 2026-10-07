@@ -1,6 +1,9 @@
 // app.js — 主控制器
 // 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
+// 构建戳：每次发版更新这里，装完能一眼确认是不是新包
+const BUILD_STAMP = 'build 0.7.7';
+
 const App = {
   identity: 'player',
   _switching: false,
@@ -311,7 +314,8 @@ async function boot() {
 
   let ver = '';
   try { ver = await window.pulses.version(); } catch (_) {}
-  document.getElementById('status-version').textContent = ver ? 'v' + ver : '';
+  const verEl = document.getElementById('status-version');
+  if (verEl) verEl.textContent = (ver ? 'v' + ver : '') + ' · ' + BUILD_STAMP;
 
   Player.init();
   Developer.init();
