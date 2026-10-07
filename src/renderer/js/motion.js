@@ -80,4 +80,13 @@ const Motion = {
   },
 };
 
+// 只改按钮里的文字层（.cta-label），不破坏 .cta-shine 扫光层
+function setBtnLabel(btn, text) {
+  if (!btn) return;
+  const label = btn.querySelector('.cta-label');
+  if (label) label.textContent = text;
+  else btn.textContent = text;
+}
+
 window.Motion = Motion;
+window.setBtnLabel = setBtnLabel;
