@@ -82,12 +82,95 @@ const App = {
 
   // ── 侧边栏动作 ──
   async openPrefs() {
-    const cfg = await window.pulses.db.loadConfig();
-    if (!cfg) {
-      await Overlay.alert('提示', '还没有数据库。\n请先在「数据库位置」里选择或新建。');
-      return;
-    }
-    await Overlay.alert('首选项', `数据库路径：\n${cfg.db_path}`);
+    let dbPath = null;
+    try { dbPath = await window.pulses.db.getPath(); } catch (_) {}
+
+    await Overlay.panel('首选项', (body, done) => {
+      // ── 数据库位置 ──
+      const row = document.createElement('div');
+      row.className = 'pref-row';
+
+      const main = document.createElement('div');
+      main.className = 'pref-main';
+
+      const label = document.createElement('div');
+      label.className = 'pref-label';
+      label.textContent = '数据库位置';
+
+      const value = document.createElement('div');
+      value.className = 'pref-value';
+      value.textContent = dbPath || '尚未设置';
+
+      main.appendChild(label);
+      main.appendChild(value);
+
+      const btn = document.createElement('button');
+      btn.className = 'pref-btn';
+      btn.textContent = dbPath ? '更换位置…' : '选择位置…';
+      btn.addEventListener('click', async () => {
+        const picked = await window.pulses.dialog.openFolder('选择数据库位置');
+        if (!picked) return;
+        if (!dbPath) {
+          const ok = await window.pulses.db.create(picked);
+          if (!ok) {
+            Log.error('创建数据库失败：' + picked);
+            return;
+          }
+          dbPath = picked;
+          value.textContent = dbPath;
+          btn.textContent = '更换位置…';
+          Log.ok('已创建并切换到数据库：' + dbPath);
+          App.setStatus('数据库：' + dbPath);
+          done(dbPath);
+          return;
+        }
+        // 已有数据库 → 走迁移/切换流程
+        const valid = await window.pulses.db.isValid(picked);
+        const ok = await Overlay.confirm('更换数据库位置',
+          valid
+            ? `切换到已有数据库：\n${picked}\n\n当前数据库不会被删除。`
+            : `在这个位置新建数据库并切换过去：\n${picked}\n\n当前数据库不会被删除，也不会迁移数据。`,
+          { confirmText: valid ? '切换' : '新建并切换' });
+        if (!ok) return;
+
+        let res;
+        if (valid) {
+          res = await window.pulses.db.create(picked);   // 写入程序配置即完成切换
+        } else {
+          res = await window.pulses.db.create(picked);
+        }
+        if (res) {
+          dbPath = picked;
+          value.textContent = dbPath;
+          Log.ok('数据库位置已更换：' + dbPath);
+          App.setStatus('数据库：' + dbPath);
+          await App.loadWhitelist();
+        } else {
+          Log.error('更换失败');
+          await Overlay.alert('更换失败', '无法使用该位置。', { level: 'error' });
+        }
+      });
+
+      row.appendChild(main);
+      row.appendChild(btn);
+      body.appendChild(row);
+
+      // ── 版本 ──
+      const row2 = document.createElement('div');
+      row2.className = 'pref-row';
+      const main2 = document.createElement('div');
+      main2.className = 'pref-main';
+      const l2 = document.createElement('div');
+      l2.className = 'pref-label';
+      l2.textContent = '版本';
+      const v2 = document.createElement('div');
+      v2.className = 'pref-value';
+      v2.textContent = document.getElementById('status-version').textContent || '—';
+      main2.appendChild(l2);
+      main2.appendChild(v2);
+      row2.appendChild(main2);
+      body.appendChild(row2);
+    });
   },
 
   async cleanCache() {
@@ -103,25 +186,6 @@ const App = {
     if (!ok) return;
     Log.warn('缓存清理将在后续版本接入（当前仅确认流程）');
     this.setStatus('缓存清理：待接入');
-  },
-
-  async openDbLocation() {
-    const p = await window.pulses.db.getPath();
-    if (!p) {
-      const picked = await window.pulses.dialog.openFolder('选择数据库位置');
-      if (!picked) return;
-      const created = await window.pulses.db.create(picked);
-      if (created) {
-        Log.ok('已创建并切换到数据库：' + picked);
-        this.setStatus('数据库：' + picked);
-      } else {
-        await Overlay.alert('创建失败', '无法在该位置创建数据库。',
-                            { level: 'error' });
-      }
-      return;
-    }
-    await Overlay.alert('数据库位置', p);
-    window.pulses.dialog.showItem(p);
   },
 
   async loadWhitelist() {
@@ -251,8 +315,6 @@ async function boot() {
     .addEventListener('click', () => App.openPrefs());
   document.getElementById('btn-clean-cache')
     .addEventListener('click', () => App.cleanCache());
-  document.getElementById('btn-db-location')
-    .addEventListener('click', () => App.openDbLocation());
   document.getElementById('btn-recent-clear')
     .addEventListener('click', async () => {
       await Recent.clear();
