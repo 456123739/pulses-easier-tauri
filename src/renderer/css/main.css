@@ -208,14 +208,26 @@ img { display: block; max-width: 100%; }
 /* 侧边栏里的列表封顶，保证下面的「功能」永远够得着 */
 #sb-recent-list { max-height: 176px; overflow-y: auto; }
 .list-item {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 10px;
   width: 100%; text-align: left;
   min-height: 40px;
   padding: 0 16px;
   position: relative;
   font-size: var(--t-footnote);
   color: var(--label);
+  /* 路径完整显示：放不下就横向滚动，不截断 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
   transition: background var(--d-fast) var(--ease-out);
+}
+.list-item::-webkit-scrollbar { height: 3px; }
+.list-item::-webkit-scrollbar-track { background: transparent; }
+.list-item::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.22);
+  border-radius: 99px;
+  border: none;
+  background-clip: border-box;
 }
 .list-item + .list-item::before {
   content: '';
@@ -226,15 +238,12 @@ img { display: block; max-width: 100%; }
 }
 .list-item:hover { background: rgba(255,255,255,.05); }
 .list-item:active { background: rgba(255,255,255,.09); }
-.li-name {
-  flex: 1 1 auto; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+.li-name { flex: 0 0 auto; }
 .li-path {
-  flex: 0 1 auto; min-width: 0; max-width: 48%;
+  flex: 0 0 auto;
+  padding-left: 4px;
   font-size: var(--t-caption);
   color: var(--label-3);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .list-empty {
   padding: 12px 16px;
@@ -784,22 +793,3 @@ img { display: block; max-width: 100%; }
 }
 .pref-switch.is-on { background: var(--green); }
 .pref-switch.is-on::after { transform: translateX(20px); }
-
-/* ════════════════ 悬停提示 ════════════════ */
-.tip {
-  position: fixed; z-index: 9000;
-  max-width: 480px;
-  padding: 8px 12px;
-  border-radius: var(--r-small);
-  background: rgba(44, 44, 46, .97);
-  font-size: var(--t-footnote);
-  line-height: 1.45;
-  color: var(--label);
-  word-break: break-word;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(6px) scale(.97);
-  transition: opacity var(--d-base) var(--ease-out),
-              transform var(--d-base) var(--spring);
-}
-.tip.is-in { opacity: 1; transform: translateY(0) scale(1); }
