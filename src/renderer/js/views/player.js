@@ -98,11 +98,11 @@ const Player = {
     this.state.updateZip = packPath;
     document.getElementById('pack-name').textContent = baseName(packPath);
     document.getElementById('btn-clear-pack').classList.remove('is-hidden');
-    Log.info('已加载更新包：' + baseName(packPath));
+    Log.ok('已加载更新包：' + baseName(packPath));
 
     // 解压 → 比对
     const out = packPath.replace(/\.[^.]+$/, '') + '_pulses_extract';
-    Log.info('解压更新包…');
+    Log.debug('解压更新包…');
     const unzip = await window.pulses.files.unzip(packPath, out);
     if (!unzip || !unzip.ok) {
       Log.error('解压失败：' + (unzip && unzip.msg ? unzip.msg : '未知错误'));
@@ -111,9 +111,9 @@ const Player = {
       return;
     }
     this.state.extractedDir = out;
-    Log.ok(`解压完成（${unzip.files} 个条目）`);
+    Log.debug(`解压完成（${unzip.files} 个条目）`);
 
-    Log.info('比对差异…');
+    Log.debug('比对差异…');
     const diff = await window.pulses.diff.packs(this.state.modpackPath, out);
     this.state.diff = diff;
 
@@ -125,7 +125,7 @@ const Player = {
     // 更新日志预览
     try {
       const md = await window.pulses.pack.readChangelog(packPath);
-      if (md) Log.info('更新日志：' + firstLine(md));
+      if (md) Log.debug('更新日志：' + firstLine(md));
     } catch (_) { /* 没有日志也正常 */ }
 
     this._refreshSteps();
@@ -137,7 +137,7 @@ const Player = {
     this.state.diff = null;
     document.getElementById('pack-name').textContent = '';
     document.getElementById('btn-clear-pack').classList.add('is-hidden');
-    Log.info('已清空更新包');
+    Log.debug('已清空更新包');
     this._refreshSteps();
   },
 
@@ -172,13 +172,13 @@ const Player = {
     const newRoot = this.state.extractedDir;
 
     try {
-      Log.info('构建更新计划…');
+      Log.debug('构建更新计划…');
       const plan = await window.pulses.update.buildPlan(
         this.state.diff, { all: true }, {}, oldRoot, newRoot);
       const total = (plan.tasks || []).length;
-      Log.info(`计划：${total} 个文件`);
+      Log.debug(`计划：${total} 个文件`);
 
-      Log.info('开始应用更新…');
+      Log.debug('开始应用更新…');
       const res = await window.pulses.update.execute(plan, oldRoot, newRoot);
 
       if (res && res.ok) {
