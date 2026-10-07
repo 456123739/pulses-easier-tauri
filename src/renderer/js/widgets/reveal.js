@@ -1,84 +1,86 @@
-// reveal.js — 高度展开/收起动画（用于侧边栏选项「伸出来」）
+// reveal.js — 高度展开/收起（用 WAAPI 驱动，不依赖 CSS 过渡）
 //
-// 为什么不用 CSS 的 grid-template-rows: 0fr→1fr：
-//   那个特性依赖较新的 Chromium，WebView2 版本参差。
-// 这里用「量高度 + 动 height」，任何内核都能跑，且动画可控。
+// 侧边栏「伸出来」的效果：
+//   量出目标高度 → 用 WAAPI 把 height 从 0 动到目标值，
+//   同时 opacity 0→1、translateX(-14px)→0。
+// 动画结束后释放高度（改回 auto），内容变化不会被截断。
 
 const Reveal = {
-  DUR: 340,
+  DUR: 420,
 
-  /** 元素当前是否处于展开态 */
   isExpanded(el) {
-    return !el.classList.contains('is-collapsed');
+    return el && !el.classList.contains('is-collapsed');
   },
 
   /**
-   * 展开 / 收起一个块。
-   * @param el      目标元素（需要 overflow:hidden）
+   * @param el      目标（需要 overflow:hidden）
    * @param expand  true=展开
-   * @param delay   延迟毫秒（用于错开）
+   * @param delay   延迟毫秒（错开用）
    */
   set(el, expand, delay = 0) {
     if (!el) return;
-    clearTimeout(el._revealTimer);
+
+    Anim.cancelAll(el);
     clearTimeout(el._revealSettle);
 
-    if (expand) {
-      el.classList.remove('is-collapsed');
-      el.style.overflow = 'hidden';
+    const target = expand ? this._measure(el) : el.offsetHeight;
 
-      // 先归零量出目标高度
-      el.style.height = '0px';
-      el.style.opacity = '0';
-      el.style.transform = 'translateX(-12px)';
-      const target = el.scrollHeight;
-      void el.offsetWidth;
+    el.classList.toggle('is-collapsed', !expand);
+    el.style.overflow = 'hidden';
 
-      el._revealTimer = setTimeout(() => {
-        el.style.height = target + 'px';
-        el.style.opacity = '1';
-        el.style.transform = 'none';
-        // 动画结束后放开高度，内容变化也不会被截断
-        el._revealSettle = setTimeout(() => {
-          el.style.height = '';
-          el.style.overflow = '';
-        }, this.DUR + 30);
-      }, delay);
-    } else {
-      // 从当前高度收到 0
-      el.style.overflow = 'hidden';
-      el.style.height = el.scrollHeight + 'px';
-      void el.offsetWidth;
-      el._revealTimer = setTimeout(() => {
-        el.classList.add('is-collapsed');
-        el.style.height = '0px';
-        el.style.opacity = '0';
-        el.style.transform = 'translateX(-12px)';
-      }, delay);
+    const from = expand
+      ? { height: '0px', opacity: 0, transform: 'translateX(-14px)' }
+      : { height: target + 'px', opacity: 1, transform: 'translateX(0)' };
+    const to = expand
+      ? { height: target + 'px', opacity: 1, transform: 'translateX(0)' }
+      : { height: '0px', opacity: 0, transform: 'translateX(-14px)' };
+
+    const anim = Anim.play(el, [from, to], {
+      duration: this.DUR,
+      delay,
+      easing: Anim.SOFT,
+      fill: 'both',
+    });
+
+    if (!anim) {
+      // 不支持 WAAPI：直接落到终态
+      this._settle(el, expand);
+      return;
     }
+
+    anim.onfinish = () => this._settle(el, expand);
   },
 
-  /** 一次性同步（初始化用，不播动画） */
+  _measure(el) {
+    const prevH = el.style.height;
+    const prevO = el.style.overflow;
+    el.style.height = '';
+    el.style.overflow = '';
+    const h = el.scrollHeight;
+    el.style.height = prevH;
+    el.style.overflow = prevO;
+    return h;
+  },
+
+  _settle(el, expand) {
+    Anim.cancelAll(el);
+    el.style.overflow = '';
+    el.style.height = '';
+    el.style.opacity = '';
+    el.style.transform = '';
+    el.classList.toggle('is-collapsed', !expand);
+  },
+
+  /** 初始化用：不播动画，直接摆好 */
   apply(el, expand) {
     if (!el) return;
-    clearTimeout(el._revealTimer);
+    Anim.cancelAll(el);
     clearTimeout(el._revealSettle);
-    el.style.transition = 'none';
-    el.style.overflow = 'hidden';
-    el.classList.toggle('is-collapsed', !expand);
-    if (expand) {
-      el.style.height = '';
-      el.style.opacity = '';
-      el.style.transform = '';
-    } else {
-      // 关键：折叠态必须显式写 0，光靠 class 是撑不开的
-      el.style.height = '0px';
-      el.style.opacity = '0';
-      el.style.transform = 'translateX(-12px)';
-    }
-    void el.offsetWidth;
-    el.style.transition = '';
     el.style.overflow = '';
+    el.style.height = '';
+    el.style.opacity = '';
+    el.style.transform = '';
+    el.classList.toggle('is-collapsed', !expand);
   },
 };
 

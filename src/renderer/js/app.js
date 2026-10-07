@@ -70,45 +70,44 @@ const App = {
     this._navActive = id;
   },
 
-  // ── 首选项 ──
+  // ── 设置（iOS 分组行：标签 + 当前值 + 箭头，无解释文字）──
   async openPrefs() {
     this.markNav('btn-prefs');
 
     let dbPath = null;
     try { dbPath = await window.pulses.db.getPath(); } catch (_) {}
 
-    await Overlay.panel('首选项', (body, done) => {
-      // ── 数据库位置 ──
-      const row = document.createElement('div');
-      row.className = 'pref-row';
+    await Overlay.panel('设置', (body, done) => {
+      // 数据库位置
+      const r1 = document.createElement('div');
+      r1.className = 'pref-row';
 
-      const main = document.createElement('div');
-      main.className = 'pref-main';
+      const m1 = document.createElement('div');
+      m1.className = 'pref-main';
+      const l1 = document.createElement('div');
+      l1.className = 'pref-label';
+      l1.textContent = '数据库位置';
+      m1.appendChild(l1);
 
-      const label = document.createElement('div');
-      label.className = 'pref-label';
-      label.textContent = '数据库位置';
+      const v1 = document.createElement('div');
+      v1.className = 'pref-value';
+      v1.textContent = dbPath || '未设置';
+      v1.title = dbPath || '';
 
-      const value = document.createElement('div');
-      value.className = 'pref-value';
-      value.textContent = dbPath || '尚未设置';
+      r1.appendChild(m1);
+      r1.appendChild(v1);
 
-      main.appendChild(label);
-      main.appendChild(value);
-
-      const btn = document.createElement('button');
-      btn.className = 'pref-btn';
-      btn.textContent = dbPath ? '更换位置…' : '选择位置…';
-      btn.addEventListener('click', async () => {
+      const b1 = document.createElement('button');
+      b1.className = 'pref-btn';
+      b1.textContent = '更改';
+      b1.addEventListener('click', async () => {
         const picked = await window.pulses.dialog.openFolder('选择数据库位置');
         if (!picked) return;
 
         if (dbPath) {
           const valid = await window.pulses.db.isValid(picked);
           const ok = await Overlay.confirm('更换数据库位置',
-            valid
-              ? `切换到已有数据库：\n${picked}\n\n当前数据库不会被删除。`
-              : `在这个位置新建数据库并切换过去：\n${picked}\n\n当前数据库不会被删除。`,
+            `${picked}\n\n${valid ? '切换到该数据库。' : '在该位置新建数据库。'}\n当前数据库不会被删除。`,
             { confirmText: valid ? '切换' : '新建并切换' });
           if (!ok) return;
         }
@@ -120,30 +119,25 @@ const App = {
           return;
         }
         dbPath = picked;
-        value.textContent = dbPath;
-        btn.textContent = '更换位置…';
+        v1.textContent = dbPath;
+        v1.title = dbPath;
         Log.ok('数据库位置已更新：' + dbPath);
         App.setStatus('数据库：' + dbPath);
         await App.loadWhitelist();
       });
 
-      row.appendChild(main);
-      row.appendChild(btn);
-      body.appendChild(row);
+      r1.appendChild(b1);
+      body.appendChild(r1);
 
-      // ── 完整日志开关 ──
-      const row2 = document.createElement('div');
-      row2.className = 'pref-row';
-      const main2 = document.createElement('div');
-      main2.className = 'pref-main';
+      // 完整日志（开关，无说明文字）
+      const r2 = document.createElement('div');
+      r2.className = 'pref-row';
+      const m2 = document.createElement('div');
+      m2.className = 'pref-main';
       const l2 = document.createElement('div');
       l2.className = 'pref-label';
       l2.textContent = '完整日志';
-      const v2 = document.createElement('div');
-      v2.className = 'pref-value';
-      v2.textContent = '显示解压 / 比对 / 打包等过程细节';
-      main2.appendChild(l2);
-      main2.appendChild(v2);
+      m2.appendChild(l2);
 
       const sw = document.createElement('button');
       sw.className = 'pref-switch' + (Log.isVerbose() ? ' is-on' : '');
@@ -152,28 +146,29 @@ const App = {
         Log.setVerbose(on);
         sw.classList.toggle('is-on', on);
         await App.saveVerbose(on);
-        Log.ok(on ? '已开启完整日志' : '已关闭完整日志');
       });
 
-      row2.appendChild(main2);
-      row2.appendChild(sw);
-      body.appendChild(row2);
+      r2.appendChild(m2);
+      r2.appendChild(sw);
+      body.appendChild(r2);
 
-      // ── 版本 ──
-      const row3 = document.createElement('div');
-      row3.className = 'pref-row';
-      const main3 = document.createElement('div');
-      main3.className = 'pref-main';
+      // 版本
+      const r3 = document.createElement('div');
+      r3.className = 'pref-row';
+      const m3 = document.createElement('div');
+      m3.className = 'pref-main';
       const l3 = document.createElement('div');
       l3.className = 'pref-label';
       l3.textContent = '版本';
+      m3.appendChild(l3);
+
       const v3 = document.createElement('div');
       v3.className = 'pref-value';
       v3.textContent = document.getElementById('status-version').textContent || '—';
-      main3.appendChild(l3);
-      main3.appendChild(v3);
-      row3.appendChild(main3);
-      body.appendChild(row3);
+
+      r3.appendChild(m3);
+      r3.appendChild(v3);
+      body.appendChild(r3);
     });
   },
 

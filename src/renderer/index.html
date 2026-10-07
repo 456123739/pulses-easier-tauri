@@ -8,78 +8,71 @@
   <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
-  <!-- ══ 启动页 ══ -->
+  <!-- 启动页 -->
   <div id="splash" class="splash">
     <img class="splash-logo" src="assets/logo.png" alt="Pulses Easier">
     <div class="splash-track"><i></i></div>
-    <div class="splash-text">正在准备…</div>
   </div>
 
-  <!-- ══ 主界面 ══ -->
   <div id="app" class="app is-hidden">
-    <!-- ── 侧边栏 ── -->
+
+    <!-- ══ 侧边栏 ══ -->
     <aside class="sidebar">
       <div class="brand">
         <img src="assets/logo.png" alt="Pulses Easier">
-        <div class="brand-note">
-          <span>Produced by Pulses0 Studio.</span>
-          <span>Made by NimShade &amp; DS.</span>
-        </div>
+        <span class="brand-sub">Pulses0 Studio</span>
       </div>
 
       <div class="sb-scroll">
-        <section class="panel">
-          <div class="panel-head"><span class="panel-label">当前整合包</span></div>
-          <div class="panel-body">
-            <div class="mp-name" id="sb-modpack-name">未定位</div>
-            <div class="mp-meta" id="sb-modpack-meta">尚未选择整合包</div>
+        <section class="group">
+          <div class="group-title">整合包</div>
+          <div class="card">
+            <div class="row row-static">
+              <span class="row-label" id="sb-modpack-name">未定位</span>
+            </div>
+            <div class="row-note" id="sb-modpack-meta"></div>
           </div>
         </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <span class="panel-label">最近打开</span>
-            <button class="mini-btn" id="btn-recent-clear">清空</button>
+        <section class="group">
+          <div class="group-title">
+            <span>最近</span>
+            <button class="link-btn" id="btn-recent-clear">清空</button>
           </div>
-          <div class="panel-body">
+          <div class="card">
             <div class="list" id="sb-recent-list"></div>
           </div>
         </section>
 
-        <!-- 功能：模式相关项会「伸出来」/「收回去」 -->
-        <section class="panel">
-          <div class="panel-head"><span class="panel-label">功能</span></div>
-          <div class="panel-body" id="mode-options">
-
+        <section class="group">
+          <div class="group-title">功能</div>
+          <div class="card" id="mode-options">
             <div class="opt" data-mode="player">
-              <button class="nav-item" id="nav-locate">
-                <span class="nav-ico">📁</span><span>定位整合包</span>
+              <button class="row" id="nav-locate">
+                <span class="row-label">定位整合包</span><span class="chev">›</span>
               </button>
             </div>
             <div class="opt" data-mode="player">
-              <button class="nav-item" id="nav-pickpack">
-                <span class="nav-ico">📦</span><span>选择更新包</span>
-              </button>
-            </div>
-
-            <div class="opt" data-mode="developer">
-              <button class="nav-item" id="nav-newpack">
-                <span class="nav-ico">📦</span><span>选择新版本</span>
+              <button class="row" id="nav-pickpack">
+                <span class="row-label">选择更新包</span><span class="chev">›</span>
               </button>
             </div>
             <div class="opt" data-mode="developer">
-              <button class="nav-item" id="nav-oldpack">
-                <span class="nav-ico">📂</span><span>选择旧版本</span>
+              <button class="row" id="nav-newpack">
+                <span class="row-label">选择新版本</span><span class="chev">›</span>
               </button>
             </div>
-
+            <div class="opt" data-mode="developer">
+              <button class="row" id="nav-oldpack">
+                <span class="row-label">选择旧版本</span><span class="chev">›</span>
+              </button>
+            </div>
             <div class="opt-sep" data-mode="developer"></div>
-
-            <button class="nav-item" id="btn-clean-cache">
-              <span class="nav-ico">🧹</span><span>清理缓存</span>
+            <button class="row" id="btn-clean-cache">
+              <span class="row-label">清理缓存</span><span class="chev">›</span>
             </button>
-            <button class="nav-item" id="btn-prefs">
-              <span class="nav-ico" data-gear>⚙</span><span>首选项</span>
+            <button class="row" id="btn-prefs">
+              <span class="row-label">设置</span><span class="chev">›</span>
             </button>
           </div>
         </section>
@@ -94,55 +87,43 @@
       </div>
     </aside>
 
-    <!-- ── 主区 ── -->
+    <!-- ══ 主区 ══ -->
     <main class="main">
 
       <!-- 玩家端 -->
       <section id="player-view" class="view is-active">
         <div class="col col-left">
 
-          <article class="step">
+          <article class="card step">
             <div class="step-head">
               <span class="step-num">1</span>
-              <div class="step-title">
-                <h2>选择整合包文件夹</h2>
-                <p>定位要更新的整合包根目录</p>
-              </div>
+              <h2>整合包</h2>
             </div>
             <div class="step-body">
-              <button class="picker" id="btn-pick-modpack">
-                <span class="picker-ico">📁</span>
-                <span class="picker-label">选择整合包文件夹</span>
-                <span class="picker-kbd">Ctrl+O</span>
+              <button class="row row-action" id="btn-pick-modpack">
+                <span class="row-label">选择文件夹</span>
+                <span class="chev">›</span>
               </button>
-
               <div class="picked is-hidden" id="modpack-picked">
                 <div class="picked-name" id="modpack-name"></div>
                 <div class="picked-meta" id="modpack-meta"></div>
               </div>
-
-              <div class="field-label">已选过的</div>
               <div class="list" id="step1-recent"></div>
             </div>
           </article>
 
-          <article class="step">
+          <article class="card step">
             <div class="step-head">
               <span class="step-num">2</span>
-              <div class="step-title">
-                <h2>选择更新包</h2>
-                <p>拖入或点选 .zip / .eapack</p>
-              </div>
+              <h2>更新包</h2>
             </div>
             <div class="step-body">
               <div class="drop" id="drop-zone">
-                <span class="drop-ico">⬇</span>
-                <span class="drop-main">拖入更新包</span>
-                <span class="drop-sub">或点击选择文件</span>
+                <span class="drop-main">拖入或选择</span>
               </div>
-              <div class="row">
+              <div class="row-between">
                 <span class="pack-name" id="pack-name"></span>
-                <button class="mini-btn is-hidden" id="btn-clear-pack">清空</button>
+                <button class="link-btn is-hidden" id="btn-clear-pack">清空</button>
               </div>
             </div>
           </article>
@@ -150,25 +131,19 @@
         </div>
 
         <div class="col col-right">
-          <article class="step step-cta">
+          <article class="card step step-cta">
             <div class="step-head">
               <span class="step-num">3</span>
-              <div class="step-title">
-                <h2>开始更新</h2>
-                <p>比对差异并应用到整合包</p>
-              </div>
+              <h2>更新</h2>
             </div>
-            <div class="step-body step-body-grow">
+            <div class="step-body">
               <button class="cta" id="btn-start" disabled>
                 <span class="cta-label">开始更新</span>
               </button>
-
               <div class="progress is-hidden" id="progress-panel">
                 <div class="progress-track"><i class="progress-fill" id="progress-fill"></i></div>
-                <div class="progress-text" id="progress-text">就绪</div>
+                <div class="progress-text" id="progress-text"></div>
               </div>
-
-              <div class="field-label">日志</div>
               <div class="log" id="log-list"></div>
             </div>
           </article>
@@ -179,40 +154,33 @@
       <section id="developer-view" class="view">
         <div class="col col-left">
 
-          <article class="step">
+          <article class="card step">
             <div class="step-head">
               <span class="step-num">1</span>
-              <div class="step-title">
-                <h2>选择新版本整合包</h2>
-                <p>本次要发布的版本</p>
-              </div>
+              <h2>新版本</h2>
             </div>
             <div class="step-body">
-              <button class="picker" id="btn-pick-newpack">
-                <span class="picker-ico">📦</span>
-                <span class="picker-label">选择新版本文件夹</span>
+              <button class="row row-action" id="btn-pick-newpack">
+                <span class="row-label">选择文件夹</span>
+                <span class="chev">›</span>
               </button>
               <div class="picked is-hidden" id="newpack-picked">
                 <div class="picked-name" id="newpack-name"></div>
                 <div class="picked-meta" id="newpack-meta"></div>
               </div>
-              <div class="field-label">已选过的</div>
               <div class="list" id="dev-recent"></div>
             </div>
           </article>
 
-          <article class="step">
+          <article class="card step">
             <div class="step-head">
               <span class="step-num">2</span>
-              <div class="step-title">
-                <h2>选择旧版本整合包</h2>
-                <p>作为比对基准</p>
-              </div>
+              <h2>旧版本</h2>
             </div>
             <div class="step-body">
-              <button class="picker" id="btn-pick-oldpack">
-                <span class="picker-ico">📂</span>
-                <span class="picker-label">选择旧版本文件夹</span>
+              <button class="row row-action" id="btn-pick-oldpack">
+                <span class="row-label">选择文件夹</span>
+                <span class="chev">›</span>
               </button>
               <div class="picked is-hidden" id="oldpack-picked">
                 <div class="picked-name" id="oldpack-name"></div>
@@ -221,43 +189,34 @@
             </div>
           </article>
 
+          <!-- 白名单：填在左列下方空白处 -->
+          <article class="card wl-card">
+            <div class="wl-head">
+              <span class="group-title">白名单</span>
+              <button class="link-btn" id="btn-whitelist-add">＋</button>
+            </div>
+            <div class="wl-list" id="whitelist-list"></div>
+          </article>
+
         </div>
 
         <div class="col col-right">
-          <article class="step step-cta">
+          <article class="card step step-cta">
             <div class="step-head">
               <span class="step-num">3</span>
-              <div class="step-title">
-                <h2>比对并导出更新包</h2>
-                <p>生成玩家端可直接使用的 .eapack</p>
-              </div>
+              <h2>导出</h2>
             </div>
-            <div class="step-body step-body-grow">
+            <div class="step-body">
               <button class="cta" id="btn-build" disabled>
-                <span class="cta-label">比对并导出更新包</span>
+                <span class="cta-label">比对并导出</span>
               </button>
 
               <div class="diff-summary is-hidden" id="diff-summary"></div>
 
-              <div class="field-label">更新日志（Markdown）</div>
               <textarea class="md-input" id="changelog-input"
-                        placeholder="在这里写本次更新的说明…"></textarea>
+                        placeholder="更新日志"></textarea>
 
-              <div class="bottom-grid">
-                <!-- 左下角：校验白名单（常驻，不再突兀地出现/消失） -->
-                <div class="wl-block">
-                  <div class="wl-head">
-                    <span class="field-label">校验白名单</span>
-                    <button class="mini-btn" id="btn-whitelist-add">＋</button>
-                  </div>
-                  <div class="wl-list" id="whitelist-list"></div>
-                </div>
-
-                <div class="log-block">
-                  <div class="field-label">日志</div>
-                  <div class="log" id="dev-log-list"></div>
-                </div>
-              </div>
+              <div class="log" id="dev-log-list"></div>
             </div>
           </article>
         </div>
@@ -266,7 +225,6 @@
     </main>
 
     <footer class="statusbar">
-      <span class="status-dot"></span>
       <span class="status-text" id="status-text">就绪</span>
       <span class="status-ver" id="status-version"></span>
     </footer>
@@ -277,6 +235,7 @@
   <script src="js/preload-tauri.js"></script>
   <script src="js/motion.js"></script>
   <script src="js/glass.js"></script>
+  <script src="js/widgets/anim.js"></script>
   <script src="js/widgets/overlay.js"></script>
   <script src="js/widgets/tooltip.js"></script>
   <script src="js/widgets/log.js"></script>

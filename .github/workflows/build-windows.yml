@@ -26,11 +26,6 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust 缓存
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
       - name: 前端语法检查
         shell: pwsh
         run: |

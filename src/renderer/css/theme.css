@@ -1,68 +1,76 @@
 /* ══════════════════════════════════════════════════════════════
-   theme.css — 设计令牌（极简版）
-     · 纯中性灰阶（不带色偏），只有一个强调色
-     · 平面化：不用渐变、不用光晕、不用噪点
-     · 层级靠「表面亮度 + 1px 发丝线」表达
-     · 动效统一走 expo-out，位移幅度大、时长够长，看得清
+   theme.css — iOS 26 令牌
+     · 采用 iOS 系统色（深色模式），而不是自己配的灰
+     · 连续曲率：大圆角（卡片 20 / 控件 12 / 胶囊 999）
+     · 分层靠「材质 + 分隔线」，不用阴影不用光晕
+     · 动效全部走 iOS 弹簧曲线
    ══════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── 中性灰阶 ── */
-  --bg:        #0A0A0A;
-  --bg-1:      #101010;
-  --bg-2:      #161616;
-  --bg-3:      #1C1C1C;
-  --bg-4:      #242424;
-  --bg-inset:  #0D0D0D;
+  /* ── iOS 深色系统色 ── */
+  --bg-system:      #000000;
+  --bg-secondary:   #1C1C1E;
+  --bg-tertiary:    #2C2C2E;
+  --bg-elevated:    #1C1C1E;
+  --bg-grouped:     #000000;
+  --bg-grouped-2:   #1C1C1E;
+  --bg-fill:        rgba(120, 120, 128, 0.36);
+  --bg-fill-2:      rgba(120, 120, 128, 0.24);
 
-  /* ── 发丝线 ── */
-  --line-1:    rgba(255, 255, 255, 0.07);
-  --line-2:    rgba(255, 255, 255, 0.12);
-  --line-3:    rgba(255, 255, 255, 0.18);
+  /* ── 分隔线（iOS separator）── */
+  --sep:            rgba(84, 84, 88, 0.65);
+  --sep-opaque:     #38383A;
 
-  /* ── 文字 ── */
-  --text-1:    #EDEDED;
-  --text-2:    #A0A0A0;
-  --text-3:    #6B6B6B;
-  --text-4:    #464646;
+  /* ── 文字（iOS label 层级）── */
+  --label:          #FFFFFF;
+  --label-2:        rgba(235, 235, 245, 0.60);
+  --label-3:        rgba(235, 235, 245, 0.30);
+  --label-4:        rgba(235, 235, 245, 0.18);
 
-  /* ── 唯一强调色 ── */
-  --accent:      #4F6BED;
-  --accent-hi:   #6B84FF;
-  --accent-soft: rgba(79, 107, 237, 0.12);
+  /* ── iOS 系统强调色 ── */
+  --blue:           #0A84FF;
+  --blue-hi:        #409CFF;
+  --blue-soft:      rgba(10, 132, 255, 0.15);
 
-  /* ── 语义色（低饱和）── */
-  --ok:      #4ADE80;
-  --warn:    #FBBF24;
-  --err:     #F87171;
+  --green:          #30D158;
+  --orange:         #FF9F0A;
+  --red:            #FF453A;
+  --gray:           #8E8E93;
 
-  /* ── 圆角 ── */
-  --r-xs: 5px;
-  --r-sm: 7px;
-  --r-md: 10px;
-  --r-lg: 13px;
+  /* ── 连续曲率圆角 ── */
+  --r-card:   20px;
+  --r-group:  20px;
+  --r-ctrl:   12px;
+  --r-small:  8px;
+  --r-pill:   999px;
 
-  /* ── 字体 ── */
-  --font: "Inter", "Microsoft YaHei UI", "PingFang SC", "Segoe UI",
-          system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", "Consolas", "DejaVu Sans Mono", monospace;
+  /* ── 字体（SF Pro 不可用时退到系统 UI 字体）── */
+  --font: -apple-system, "SF Pro Text", "SF Pro Display",
+          "Segoe UI Variable Text", "Segoe UI",
+          "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Mono", "Consolas", monospace;
 
-  --t-micro: 10.5px;
-  --t-tiny:  11.5px;
-  --t-sm:    12.5px;
-  --t-base:  13.5px;
-  --t-md:    15px;
-  --t-lg:    17px;
+  /* iOS 字阶 */
+  --t-caption2: 11px;
+  --t-caption:  12px;
+  --t-footnote: 13px;
+  --t-subhead:  15px;
+  --t-body:     17px;
+  --t-headline: 17px;
+  --t-title3:   20px;
+  --t-title2:   22px;
+  --t-title1:   28px;
 
-  /* ── 动效曲线 ── */
-  --ease-out:  cubic-bezier(0.16, 1, 0.30, 1);
-  --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-in:   cubic-bezier(0.55, 0, 1, 0.45);
+  /* ── iOS 弹簧曲线 ── */
+  --spring:      cubic-bezier(0.34, 1.56, 0.64, 1);   /* 有回弹 */
+  --spring-soft: cubic-bezier(0.25, 1.00, 0.50, 1);   /* 临界阻尼 */
+  --ease-out:    cubic-bezier(0.16, 1.00, 0.30, 1);
+  --ease-in:     cubic-bezier(0.55, 0.00, 1.00, 0.45);
 
-  /* ── 时长（给足，看得清）── */
-  --d-fast:  140ms;
-  --d-base:  220ms;
-  --d-slow:  320ms;
-  --d-enter: 420ms;
-  --d-exit:  240ms;
+  /* ── iOS 时长 ── */
+  --d-fast:   160ms;
+  --d-base:   250ms;
+  --d-slow:   350ms;
+  --d-enter:  450ms;
+  --d-exit:   220ms;
 }
