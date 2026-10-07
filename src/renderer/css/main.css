@@ -365,8 +365,10 @@ img { display: block; max-width: 100%; }
   min-width: 0; min-height: 0;
   opacity: 0;
   pointer-events: none;
-  /* 兜底：WAAPI 不可用时至少还有淡入淡出 */
-  transition: opacity 180ms var(--ease-out);
+  /* 注意：这里不能写 transition。
+     按 CSS 层叠规则，transition 的优先级高于 animation，
+     一旦写了，切 class 触发的透明度过渡会盖掉 WAAPI 的位移，
+     结果是「淡出」而不是「划走」。 */
 }
 .view.is-active { opacity: 1; pointer-events: auto; }
 

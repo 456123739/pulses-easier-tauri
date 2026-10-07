@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Pulses Easier",
-  "version": "0.8.4-glass-beta",
+  "version": "0.8.5-glass-beta",
   "identifier": "com.pulses.easier",
   "build": {
     "frontendDist": "../src/renderer",
