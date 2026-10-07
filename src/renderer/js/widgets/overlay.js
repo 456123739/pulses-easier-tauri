@@ -1,5 +1,7 @@
 // overlay.js — 窗内弹窗（遮罩 + 居中卡片，替代 Python overlay.py）
-// 所有弹窗都在 DOM 内画，不新开 BrowserWindow。
+// 全部在 DOM 内画，不新开窗口。
+// 动画要点：元素插入后必须强制重排（void offsetWidth）再改样式，
+//           否则浏览器会把「插入 + 改样式」合并成一帧，transition 不触发。
 
 const Overlay = {
   container: null,
@@ -8,120 +10,128 @@ const Overlay = {
     this.container = document.getElementById('overlay-container');
   },
 
-  // 底层遮罩
   _scrim() {
     const s = document.createElement('div');
-    s.className = 'overlay-scrim';
     s.style.cssText = `
       position: fixed; inset: 0; z-index: 8000;
-      background: var(--scrim);
-      opacity: 0; transition: opacity var(--t-dialog) var(--ease);
+      background: rgba(6, 6, 9, 0.66);
+      opacity: 0;
+      transition: opacity 200ms var(--ease);
     `;
-    // 吞掉所有鼠标事件
     s.addEventListener('mousedown', e => e.stopPropagation());
     s.addEventListener('click', e => e.stopPropagation());
     return s;
   },
 
-  // 居中卡片
   _card(title, message, opts = {}) {
+    const accent = opts.level === 'error' ? 'var(--error)'
+                 : opts.level === 'warn'  ? 'var(--warning)'
+                 : 'var(--accent)';
+
     const card = document.createElement('div');
-    card.className = 'overlay-card';
     card.style.cssText = `
-      position: fixed; top: 50%; left: 50%;
-      transform: translate(-50%, -50%) translateY(14px);
-      z-index: 8001; opacity: 0;
-      background: var(--glass-surface);
-      backdrop-filter: blur(20px) saturate(150%);
-      border: 1px solid var(--glass-border);
-      border-radius: var(--r-card);
-      padding: 0; min-width: 420px; max-width: 560px;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.4);
-      transition: opacity var(--t-dialog) var(--ease-out),
-                  transform var(--t-dialog) var(--ease-out);
+      position: fixed; top: 50%; left: 50%; z-index: 8001;
+      transform: translate(-50%, -46%) scale(0.97);
+      opacity: 0;
+      width: min(520px, calc(100vw - 64px));
+      background: #1C1C21;
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 14px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.55);
+      overflow: hidden;
+      transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
     `;
 
-    const accent = opts.level === 'error' ? 'var(--error)' :
-                   opts.level === 'warn'  ? 'var(--warning)' : 'var(--accent)';
-
     card.innerHTML = `
-      <div style="height:3px;background:${accent};border-radius:14px 14px 0 0;"></div>
-      <div style="padding: 18px 24px 8px;">
-        <h3 style="font-size:var(--fs-subtitle);margin-bottom:8px;color:var(--text-primary);">${title}</h3>
-        <p style="font-size:var(--fs-body);color:var(--text-secondary);line-height:1.6;white-space:pre-wrap;">${message}</p>
+      <div style="height:3px;background:${accent};"></div>
+      <div style="padding:18px 22px 4px;">
+        <div style="font-size:15px;line-height:1.45;font-weight:600;color:var(--text-primary);">
+          ${escapeHTML(title)}
+        </div>
+        <div style="font-size:13px;line-height:1.65;color:var(--text-secondary);
+                    margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere;">
+          ${escapeHTML(message)}
+        </div>
       </div>
-      <div class="overlay-body" style="padding: 0 24px;"></div>
-      <div class="overlay-btns" style="display:flex;gap:8px;padding:16px 24px 20px;"></div>
+      <div class="overlay-body" style="padding:0 22px;"></div>
+      <div class="overlay-btns"
+           style="display:flex;gap:8px;justify-content:flex-end;padding:16px 22px 18px;"></div>
     `;
     return card;
   },
 
-  // 弹窗入场
   _enter(scrim, card) {
     this.container.appendChild(scrim);
     this.container.appendChild(card);
-    requestAnimationFrame(() => {
-      scrim.style.opacity = '1';
-      card.style.opacity = '1';
-      card.style.transform = 'translate(-50%, -50%) translateY(0)';
-    });
+    void scrim.offsetWidth;          // 强制重排 → 让 transition 生效
+    scrim.style.opacity = '1';
+    card.style.opacity = '1';
+    card.style.transform = 'translate(-50%, -50%) scale(1)';
   },
 
-  // 弹窗退场
   _leave(scrim, card, after) {
     scrim.style.opacity = '0';
     card.style.opacity = '0';
-    card.style.transform = 'translate(-50%, -50%) translateY(14px)';
+    card.style.transform = 'translate(-50%, -46%) scale(0.97)';
     setTimeout(() => {
       scrim.remove();
       card.remove();
       if (after) after();
-    }, 260);
+    }, 230);
+  },
+
+  _btn(text, kind) {
+    const b = document.createElement('button');
+    b.textContent = text;
+    const base = 'padding:9px 18px;border-radius:8px;font-size:13px;line-height:1.4;'
+      + 'transition:background 150ms var(--ease),transform 150ms var(--ease);';
+    b.style.cssText = base + (kind === 'primary'
+      ? 'background:var(--accent);color:#fff;'
+      : 'background:#26262C;color:var(--text-primary);');
+    b.addEventListener('mouseenter', () => {
+      b.style.background = kind === 'primary' ? 'var(--accent-hover)' : '#30303A';
+    });
+    b.addEventListener('mouseleave', () => {
+      b.style.background = kind === 'primary' ? 'var(--accent)' : '#26262C';
+    });
+    return b;
   },
 
   // 提示框
-  alert(parent, title, message, opts = {}) {
+  alert(title, message, opts = {}) {
     return new Promise(resolve => {
       const scrim = this._scrim();
       const card = this._card(title, message, opts);
-      const btns = card.querySelector('.overlay-btns');
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-primary';
-      btn.textContent = opts.confirmText || '知道了';
-      btn.onclick = () => { this._leave(scrim, card, resolve); };
-      btns.appendChild(btn);
+      const btn = this._btn(opts.confirmText || '知道了', 'primary');
+      btn.onclick = () => this._leave(scrim, card, resolve);
+      card.querySelector('.overlay-btns').appendChild(btn);
       this._enter(scrim, card);
-      btn.focus();
+      setTimeout(() => btn.focus(), 240);
     });
   },
 
   // 确认框
-  confirm(parent, title, message, opts = {}) {
+  confirm(title, message, opts = {}) {
     return new Promise(resolve => {
       const scrim = this._scrim();
       const card = this._card(title, message, opts);
       const btns = card.querySelector('.overlay-btns');
 
-      const cancelBtn = document.createElement('button');
-      cancelBtn.className = 'btn';
-      cancelBtn.style.cssText = 'background:var(--log-bg);color:var(--text-primary);';
-      cancelBtn.textContent = opts.cancelText || '取消';
-      cancelBtn.onclick = () => { this._leave(scrim, card, () => resolve(false)); };
+      const cancel = this._btn(opts.cancelText || '取消');
+      cancel.onclick = () => this._leave(scrim, card, () => resolve(false));
 
-      const okBtn = document.createElement('button');
-      okBtn.className = 'btn btn-primary';
-      okBtn.textContent = opts.confirmText || '确定';
-      okBtn.onclick = () => { this._leave(scrim, card, () => resolve(true)); };
+      const ok = this._btn(opts.confirmText || '确定', 'primary');
+      ok.onclick = () => this._leave(scrim, card, () => resolve(true));
 
-      btns.appendChild(cancelBtn);
-      btns.appendChild(okBtn);
+      btns.appendChild(cancel);
+      btns.appendChild(ok);
       this._enter(scrim, card);
-      okBtn.focus();
+      setTimeout(() => ok.focus(), 240);
     });
   },
 
   // 输入框弹窗
-  prompt(parent, title, message, opts = {}) {
+  prompt(title, message, opts = {}) {
     return new Promise(resolve => {
       const scrim = this._scrim();
       const card = this._card(title, message, opts);
@@ -132,36 +142,32 @@ const Overlay = {
       input.placeholder = opts.placeholder || '';
       input.value = opts.initial || '';
       input.style.cssText = `
-        width: 100%; padding: 8px 12px; margin-bottom: 8px;
+        width: 100%; padding: 9px 12px; margin-top: 14px;
         background: var(--input-bg); border: 1px solid var(--border);
-        border-radius: var(--r-input); color: var(--text-primary);
-        font-size: var(--fs-body); font-family: var(--font); outline: none;
-        transition: border var(--t-hover) var(--ease);
+        border-radius: 6px; color: var(--text-primary);
+        font-size: 13px; line-height: 1.4; font-family: var(--font); outline: none;
+        transition: border-color 150ms var(--ease);
       `;
       input.addEventListener('focus', () => { input.style.borderColor = 'var(--accent)'; });
-      input.addEventListener('blur', () => { input.style.borderColor = 'var(--border)'; });
+      input.addEventListener('blur',  () => { input.style.borderColor = 'var(--border)'; });
 
-      const errLabel = document.createElement('div');
-      errLabel.style.cssText = 'font-size:var(--fs-tiny);color:var(--error);min-height:1em;margin-bottom:8px;';
+      const err = document.createElement('div');
+      err.style.cssText = 'font-size:11px;line-height:1.5;color:var(--error);'
+                        + 'min-height:1.1em;margin-top:5px;';
 
       body.appendChild(input);
-      body.appendChild(errLabel);
+      body.appendChild(err);
 
       const btns = card.querySelector('.overlay-btns');
-      const cancelBtn = document.createElement('button');
-      cancelBtn.className = 'btn';
-      cancelBtn.style.cssText = 'background:var(--log-bg);color:var(--text-primary);';
-      cancelBtn.textContent = opts.cancelText || '取消';
-      cancelBtn.onclick = () => { this._leave(scrim, card, () => resolve(null)); };
+      const cancel = this._btn(opts.cancelText || '取消');
+      cancel.onclick = () => this._leave(scrim, card, () => resolve(null));
 
-      const okBtn = document.createElement('button');
-      okBtn.className = 'btn btn-primary';
-      okBtn.textContent = opts.confirmText || '确定';
-      okBtn.onclick = () => {
+      const ok = this._btn(opts.confirmText || '确定', 'primary');
+      ok.onclick = () => {
         const val = input.value.trim();
         if (opts.validate) {
-          const [ok, norm, err] = opts.validate(val);
-          if (!ok) { errLabel.textContent = err; return; }
+          const [pass, norm, msg] = opts.validate(val);
+          if (!pass) { err.textContent = msg; return; }
           this._leave(scrim, card, () => resolve(norm));
         } else {
           this._leave(scrim, card, () => resolve(val));
@@ -169,16 +175,21 @@ const Overlay = {
       };
 
       input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') okBtn.click();
-        if (e.key === 'Escape') cancelBtn.click();
+        if (e.key === 'Enter') ok.click();
+        if (e.key === 'Escape') cancel.click();
       });
 
-      btns.appendChild(cancelBtn);
-      btns.appendChild(okBtn);
+      btns.appendChild(cancel);
+      btns.appendChild(ok);
       this._enter(scrim, card);
-      setTimeout(() => input.focus(), 300);
+      setTimeout(() => input.focus(), 250);
     });
   },
 };
+
+function escapeHTML(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 window.Overlay = Overlay;

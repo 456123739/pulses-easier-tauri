@@ -1,6 +1,6 @@
 [package]
 name = "pulses-easier"
-version = "0.7.0-glass-beta"
+version = "0.7.1-glass-beta"
 description = "Pulses Easier — Minecraft 整合包更新器（Tauri 美化版）"
 authors = ["YG"]
 edition = "2021"

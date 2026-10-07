@@ -65,6 +65,14 @@ window.pulses = {
     readChangelog: (p) => invoke('pack_read_entry', { path: p, entry: 'CHANGELOG.md' }),
   },
 
+  // ── 最近打开 ──
+  recent: {
+    load:   () => invoke('recent_load'),
+    add:    (path) => invoke('recent_add', { path }),
+    remove: (path) => invoke('recent_remove', { path }),
+    clear:  () => invoke('recent_clear'),
+  },
+
   // ── 差异比对 ──
   diff: {
     packs: (oldRoot, newRoot) => invoke('diff_packs', { oldRoot, newRoot }),
