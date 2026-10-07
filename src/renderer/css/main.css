@@ -300,6 +300,34 @@ img { display: block; max-width: 100%; }
   padding: 5px 8px;
 }
 
+/* ── 模式选项：展开/收起（侧边栏「伸出来」）──
+   容器用 block 而不是 flex：flex 的 gap 会让收起后的项仍留空隙。
+   间距改由子项自己的 margin 提供 —— 收起时连同 margin 一起被裁掉。 */
+#mode-options { display: block; }
+#mode-options .nav-item { margin-bottom: 2px; }
+
+.opt {
+  overflow: hidden;
+  transition: height 340ms var(--ease-soft),
+              opacity 200ms var(--ease-out),
+              transform 340ms var(--ease-soft);
+}
+.opt.is-collapsed { pointer-events: none; }
+.opt-sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--line-1);
+  overflow: hidden;
+  transition: height 340ms var(--ease-soft),
+              margin 340ms var(--ease-soft),
+              opacity 200ms var(--ease-out);
+}
+.opt-sep.is-collapsed { pointer-events: none; margin-top: 0; margin-bottom: 0; }
+
+/* 白名单面板整块长出来 */
+.panel { overflow: hidden; }
+.panel.is-collapsed { pointer-events: none; }
+
 /* ── 导航项 ── */
 .nav-item {
   display: flex; align-items: center; gap: 9px;
@@ -368,24 +396,20 @@ img { display: block; max-width: 100%; }
   overflow: hidden;
 }
 
+/* 两个视图常驻 DOM，靠 opacity/transform 交叉过渡 ——
+   不做 display 切换，所以不会出现「闪一下再重载」 */
 .view {
   position: absolute; inset: 0;
   display: flex; gap: 14px;
   padding: 16px;
   min-width: 0; min-height: 0;
   opacity: 0;
-  transform: translateX(22px) scale(.994);
+  transform: translateX(30px);
   pointer-events: none;
-  transition: opacity var(--d-enter) var(--ease-out),
-              transform var(--d-enter) var(--ease-out);
+  transition: opacity 300ms var(--ease-out),
+              transform 400ms var(--ease-out);
 }
 .view.is-active { opacity: 1; transform: none; pointer-events: auto; }
-.view.is-out {
-  opacity: 0;
-  transform: translateX(-18px) scale(.994);
-  transition: opacity var(--d-exit) var(--ease-in),
-              transform var(--d-exit) var(--ease-in);
-}
 
 .col {
   display: flex; flex-direction: column; gap: 14px;
