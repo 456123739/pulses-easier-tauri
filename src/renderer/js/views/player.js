@@ -145,54 +145,83 @@ const Player = {
   },
 
   // ── 变更列表 ──
-  _renderChanges(diff) {
+  // 配色按需求：绿色=没变、紫色=变更、红色=出错
+  _renderChanges(diff, errors) {
     const box = document.getElementById('change-list');
     if (!box) return;
 
     const add = diff.added || [];
     const mod = diff.modified || [];
     const del = diff.deleted || [];
+    const same = diff.unchanged || [];
+    const errs = errors || this._errors || [];
 
     box.innerHTML = '';
 
+    // 概要三色
     const sum = document.createElement('div');
     sum.className = 'change-sum';
-    sum.textContent = `新增 ${add.length} · 修改 ${mod.length} · 删除 ${del.length}`;
+    const chip = (cls, label, n) => {
+      const c = document.createElement('span');
+      c.className = 'change-chip ' + cls;
+      c.textContent = `${label} ${n}`;
+      return c;
+    };
+    sum.appendChild(chip('unchanged', '没变', same.length));
+    sum.appendChild(chip('changed', '变更', add.length + mod.length + del.length));
+    sum.appendChild(chip('error', '出错', errs.length));
     box.appendChild(sum);
 
-    // 最多渲染 300 行，避免超大批量卡界面
     const MAX = 300;
     let n = 0;
-    const push = (list, kind, label) => {
+
+    // 出错项优先（红色）
+    for (const e of errs) {
+      if (n >= MAX) break;
+      const row = document.createElement('div');
+      row.className = 'change-row';
+      const b = document.createElement('span');
+      b.className = 'change-badge error';
+      b.textContent = '出错';
+      const t = document.createElement('span');
+      t.className = 'change-name';
+      t.textContent = e.rel || e;
+      t.title = t.textContent;
+      row.appendChild(b);
+      row.appendChild(t);
+      box.appendChild(row);
+      n++;
+    }
+
+    // 变更项（紫色）
+    const push = (list, label) => {
       for (const f of list) {
         if (n >= MAX) return;
         const row = document.createElement('div');
         row.className = 'change-row';
-        row.style.animationDelay = Math.min(n * 8, 300) + 'ms';
-
-        const badge = document.createElement('span');
-        badge.className = 'change-badge ' + kind;
-        badge.textContent = label;
-
-        const name = document.createElement('span');
-        name.className = 'change-name';
-        name.textContent = f.rel;
-        name.title = f.rel;
-
-        row.appendChild(badge);
-        row.appendChild(name);
+        row.style.animationDelay = Math.min(n * 6, 260) + 'ms';
+        const b = document.createElement('span');
+        b.className = 'change-badge changed';
+        b.textContent = label;
+        const t = document.createElement('span');
+        t.className = 'change-name';
+        t.textContent = f.rel;
+        t.title = f.rel;
+        row.appendChild(b);
+        row.appendChild(t);
         box.appendChild(row);
         n++;
       }
     };
-    push(add, 'add', '新增');
-    push(mod, 'mod', '修改');
-    push(del, 'del', '删除');
+    push(add, '新增');
+    push(mod, '修改');
+    push(del, '删除');
 
-    if (add.length + mod.length + del.length > MAX) {
+    const total = add.length + mod.length + del.length + errs.length;
+    if (total > MAX) {
       const more = document.createElement('div');
       more.className = 'change-sum';
-      more.textContent = `… 还有 ${add.length + mod.length + del.length - MAX} 项`;
+      more.textContent = `… 还有 ${total - MAX} 项`;
       box.appendChild(more);
     }
 
@@ -210,6 +239,7 @@ const Player = {
   async startUpdate() {
     if (this.state.busy) return;
     this.state.busy = true;
+    this._errors = [];
 
     const btn = document.getElementById('btn-start');
     btn.disabled = true;
@@ -221,6 +251,11 @@ const Player = {
     const ptext = document.getElementById('progress-text');
 
     window.pulses.update.onProgress(d => {
+      if (d.error) {
+        this._errors.push({ rel: d.error });
+        if (this.state.diff) this._renderChanges(this.state.diff, this._errors);
+        return;
+      }
       const pct = ((d.percent || 0) * 100).toFixed(1);
       fill.style.width = pct + '%';
       ptext.textContent = `已处理 ${d.done}/${d.total}  ·  ${pct}%`;
