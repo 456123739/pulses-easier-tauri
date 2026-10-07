@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.8.4';
+const BUILD_STAMP = 'build 0.8.5';
 
 const App = {
   identity: 'player',
@@ -28,24 +28,26 @@ const App = {
     const pill = document.getElementById('seg-pill');
     if (pill) pill.classList.toggle('is-right', next === 'developer');
 
-    // 滑动方向按模式定：
-    //   切到开发者 → 往右滑；切到玩家 → 往左滑
+    // 整块滑动（像翻页），不是移一小段：
+    //   切到开发者 → 整体往右滑走；切到玩家 → 整体往左滑走
+    // 出场与入场用同样的时长与曲线 → 两块拼成一条连续带子一起移动。
     const dir = (next === 'developer') ? 1 : -1;
-    const DIST = 72;
+    const DUR = 460;
 
     from.classList.remove('is-active');
     to.classList.add('is-active');
 
-    // 两边朝同一方向移动：出场滑出该方向，入场从反方向进来
+    // 出场：整块划走（保持不透明，否则会「消失」而不是「划走」）
     Anim.play(from,
       [{ opacity: 1, transform: 'translateX(0)' },
-       { opacity: 0, transform: `translateX(${dir * DIST}px)` }],
-      { duration: 260, easing: Anim.EASE, fill: 'both' });
+       { opacity: 1, transform: `translateX(${dir * 100}%)` }],
+      { duration: DUR, easing: Anim.SOFT, fill: 'both' });
 
+    // 入场：从另一侧整块划进来
     Anim.play(to,
-      [{ opacity: 0, transform: `translateX(${-dir * DIST}px)` },
+      [{ opacity: 1, transform: `translateX(${-dir * 100}%)` },
        { opacity: 1, transform: 'translateX(0)' }],
-      { duration: 440, easing: Anim.SOFT, fill: 'both' });
+      { duration: DUR, easing: Anim.SOFT, fill: 'both' });
 
     // 侧边栏：模式相关项伸出来 / 收回去
     this._revealModeOptions(next);
