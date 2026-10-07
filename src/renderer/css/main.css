@@ -329,6 +329,8 @@ img { display: block; max-width: 100%; }
   from { opacity: 0; transform: translateY(18px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+/* 玩家端左列只有两张卡：让它们平分高度，底部不留空 */
+#player-view .col-left .step { flex: 1 1 auto; }
 .col-left .step:nth-child(2) { animation-delay: 90ms; }
 .col-right .step { animation-delay: 170ms; }
 
@@ -483,6 +485,42 @@ img { display: block; max-width: 100%; }
   color: var(--label-3);
 }
 
+/* ── 变更列表（玩家端右面板）── */
+.changes {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: var(--r-ctrl);
+  background: var(--bg-system);
+}
+.change-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 10px;
+  border-radius: var(--r-small);
+  font-size: var(--t-caption);
+  animation: logIn var(--d-base) var(--spring-soft) both;
+}
+.change-row:hover { background: rgba(255,255,255,.05); }
+.change-badge {
+  flex: 0 0 auto;
+  font-weight: 600;
+  font-size: var(--t-caption2);
+}
+.change-badge.add { color: var(--green); }
+.change-badge.mod { color: var(--orange); }
+.change-badge.del { color: var(--red); }
+.change-name {
+  flex: 1 1 auto; min-width: 0;
+  color: var(--label-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.change-sum {
+  padding: 6px 10px 8px;
+  font-size: var(--t-caption2);
+  color: var(--label-3);
+}
+
 /* ── 日志（上限封顶，不再撑满整个面板）── */
 .log {
   flex: 1 1 auto;
@@ -542,7 +580,7 @@ img { display: block; max-width: 100%; }
 .diff-chip.del { color: var(--red); }
 
 .md-input {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-height: 130px;
   width: 100%; resize: none;
   padding: 12px 14px;
