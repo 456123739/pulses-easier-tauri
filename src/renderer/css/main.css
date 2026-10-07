@@ -599,9 +599,8 @@ img { display: block; max-width: 100%; }
 
 /* ── 日志（上限封顶，不再撑满整个面板）── */
 .log {
-  flex: 1 1 auto;
-  min-height: 120px;
-  max-height: 200px;
+  flex: 0 0 auto;
+  height: 140px;
   padding: 10px 12px;
   border-radius: var(--r-ctrl);
   background: var(--bg-system);

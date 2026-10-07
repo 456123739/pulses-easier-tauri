@@ -40,6 +40,9 @@ const Player = {
     // 最近打开（STEP 1 内）
     Recent.bind(document.getElementById('step1-recent'),
                 p => this.setModpack(p), 5);
+
+    // 模组列表先摆好空概要（三色计数），加载更新包后再填行
+    this._renderChanges({ added: [], modified: [], deleted: [], unchanged: [] }, []);
   },
 
   // ── STEP 1 ──
@@ -138,8 +141,7 @@ const Player = {
     this.state.diff = null;
     document.getElementById('pack-name').textContent = '';
     document.getElementById('btn-clear-pack').classList.add('is-hidden');
-    const cl = document.getElementById('change-list');
-    if (cl) { cl.innerHTML = ''; cl.classList.add('is-hidden'); }
+    this._renderChanges({ added: [], modified: [], deleted: [], unchanged: [] }, []);
     Log.debug('已清空更新包');
     this._refreshSteps();
   },
@@ -225,7 +227,6 @@ const Player = {
       box.appendChild(more);
     }
 
-    box.classList.remove('is-hidden');
   },
 
   // ── STEP 3 ──
