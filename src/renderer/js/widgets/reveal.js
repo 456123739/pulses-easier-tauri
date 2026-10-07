@@ -62,12 +62,21 @@ const Reveal = {
     return h;
   },
 
+  // 动画结束后落定。
+  // 关键：收起态必须保留内联的 height:0 —— 只加 class 是不够的，
+  // 清空内联样式会让元素弹回原高度（表现为「动画播完又全部展开」）。
   _settle(el, expand) {
     Anim.cancelAll(el);
     el.style.overflow = '';
-    el.style.height = '';
-    el.style.opacity = '';
-    el.style.transform = '';
+    if (expand) {
+      el.style.height = '';
+      el.style.opacity = '';
+      el.style.transform = '';
+    } else {
+      el.style.height = '0px';
+      el.style.opacity = '0';
+      el.style.transform = 'translateX(-14px)';
+    }
     el.classList.toggle('is-collapsed', !expand);
   },
 
