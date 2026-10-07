@@ -54,15 +54,12 @@ const Recent = {
 
       const dir = document.createElement('span');
       dir.className = 'li-path';
-      dir.textContent = parentDir(p);
+      dir.textContent = p;          // 完整路径，不截断；太长靠横向滚动看
 
       btn.appendChild(name);
       btn.appendChild(dir);
-      btn.title = p;
       btn.addEventListener('click', () => onPick && onPick(p));
       el.appendChild(btn);
-
-      if (String(p).length > 26) Tooltip.attach(btn, p);
     });
   },
 };
@@ -70,12 +67,6 @@ const Recent = {
 function baseName(p) {
   const parts = String(p).split(/[\\/]/).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : String(p);
-}
-
-function parentDir(p) {
-  const parts = String(p).split(/[\\/]/).filter(Boolean);
-  if (parts.length <= 1) return '';
-  return parts.slice(0, -1).join('\\');
 }
 
 window.Recent = Recent;
