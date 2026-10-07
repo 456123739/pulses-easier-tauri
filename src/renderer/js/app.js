@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.8.3';
+const BUILD_STAMP = 'build 0.8.4';
 
 const App = {
   identity: 'player',
@@ -28,17 +28,24 @@ const App = {
     const pill = document.getElementById('seg-pill');
     if (pill) pill.classList.toggle('is-right', next === 'developer');
 
-    // 旧视图往左滑出
-    from.classList.remove('is-active');
-    from.style.transform = 'translateX(-56px)';
+    // 滑动方向按模式定：
+    //   切到开发者 → 往右滑；切到玩家 → 往左滑
+    const dir = (next === 'developer') ? 1 : -1;
+    const DIST = 72;
 
-    // 新视图从右滑入（并发，无等待）
-    to.style.transform = '';
-    void to.offsetWidth;
-    to.style.transform = 'translateX(56px)';
-    void to.offsetWidth;
+    from.classList.remove('is-active');
     to.classList.add('is-active');
-    to.style.transform = '';
+
+    // 两边朝同一方向移动：出场滑出该方向，入场从反方向进来
+    Anim.play(from,
+      [{ opacity: 1, transform: 'translateX(0)' },
+       { opacity: 0, transform: `translateX(${dir * DIST}px)` }],
+      { duration: 260, easing: Anim.EASE, fill: 'both' });
+
+    Anim.play(to,
+      [{ opacity: 0, transform: `translateX(${-dir * DIST}px)` },
+       { opacity: 1, transform: 'translateX(0)' }],
+      { duration: 440, easing: Anim.SOFT, fill: 'both' });
 
     // 侧边栏：模式相关项伸出来 / 收回去
     this._revealModeOptions(next);

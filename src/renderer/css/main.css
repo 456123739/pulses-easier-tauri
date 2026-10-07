@@ -355,20 +355,20 @@ img { display: block; max-width: 100%; }
   background: var(--bg-system);
 }
 
-/* 两个视图常驻，交叉过渡。
-   淡入必须快于滑动，否则位移被淡入盖住 → 看不到滑动 */
+/* 两个视图常驻，切换时由 WAAPI 驱动滑动（方向按模式定）。
+   CSS 只保留「未激活 = 透明」，位移交给 JS 的 animate()，
+   这样方向可以精确控制，也不依赖 class 切换的时序。 */
 .view {
   position: absolute; inset: 0;
   display: flex; gap: 16px;
   padding: 18px;
   min-width: 0; min-height: 0;
   opacity: 0;
-  transform: translateX(64px);
   pointer-events: none;
-  transition: opacity 160ms var(--ease-out),
-              transform 480ms var(--spring-soft);
+  /* 兜底：WAAPI 不可用时至少还有淡入淡出 */
+  transition: opacity 180ms var(--ease-out);
 }
-.view.is-active { opacity: 1; transform: none; pointer-events: auto; }
+.view.is-active { opacity: 1; pointer-events: auto; }
 
 .col {
   display: flex; flex-direction: column; gap: 16px;
@@ -729,7 +729,10 @@ img { display: block; max-width: 100%; }
 /* ════════════════ 弹窗（iOS alert）════════════════ */
 .ov-scrim {
   position: fixed; inset: 0; z-index: 8000;
-  background: rgba(0, 0, 0, .48);
+  /* 压暗 + 高斯模糊：后面内容不可辨认 */
+  background: rgba(0, 0, 0, .52);
+  backdrop-filter: blur(24px) saturate(130%);
+  -webkit-backdrop-filter: blur(24px) saturate(130%);
   opacity: 0;
   transition: opacity var(--d-base) var(--ease-out);
 }
@@ -738,7 +741,11 @@ img { display: block; max-width: 100%; }
 .ov-card {
   position: fixed; top: 50%; left: 50%; z-index: 8001;
   width: min(460px, calc(100vw - 72px));
-  background: rgba(44, 44, 46, .97);
+  /* 液态玻璃：半透明材质 + 自身高斯模糊 */
+  background: rgba(44, 44, 46, .82);
+  backdrop-filter: blur(32px) saturate(150%);
+  -webkit-backdrop-filter: blur(32px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .10);
   border-radius: var(--r-card);
   overflow: hidden;
   opacity: 0;
