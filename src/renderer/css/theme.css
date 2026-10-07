@@ -27,10 +27,10 @@
   --label-3:        rgba(235, 235, 245, 0.30);
   --label-4:        rgba(235, 235, 245, 0.18);
 
-  /* ── iOS 系统强调色 ── */
-  --blue:           #0A84FF;
-  --blue-hi:        #409CFF;
-  --blue-soft:      rgba(10, 132, 255, 0.15);
+  /* ── 主题强调色（默认青灰；由 Theme 模块运行时覆盖）── */
+  --accent:         #6E8FA3;
+  --accent-hi:      #86A5B8;
+  --accent-soft:    rgba(110, 143, 163, 0.16);
 
   --green:          #30D158;
   --purple:         #BF5AF2;

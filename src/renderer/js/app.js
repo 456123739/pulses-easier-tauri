@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.8.1';
+const BUILD_STAMP = 'build 0.8.2';
 
 const App = {
   identity: 'player',
@@ -151,7 +151,15 @@ const App = {
       r1.appendChild(btn);
       body.appendChild(r1);
 
-      // 2. 界面动画
+      // 2. 主题色（小方框，点开是调色盘）
+      const sw = document.createElement('button');
+      sw.className = 'pref-swatch';
+      sw.style.background = Theme.current();
+      sw.title = '主题色';
+      sw.addEventListener('click', () => App.openThemePicker());
+      body.appendChild(mkRow('主题色', sw));
+
+      // 3. 界面动画
       body.appendChild(mkRow('界面动画', mkSwitch(Motion.enabled, (on) => {
         Motion.setEnabled(on);
         App.saveUiPref('animations', on);
@@ -177,6 +185,90 @@ const App = {
     });
   },
 
+  // ── 调色盘（覆盖层）──
+  async openThemePicker() {
+    const start = Theme.current();
+
+    await Overlay.panel('主题色', (body) => {
+      // 预设色点
+      const grid = document.createElement('div');
+      grid.className = 'picker-grid';
+      const dots = [];
+      for (const [name, hex] of Theme.PRESETS) {
+        const dot = document.createElement('button');
+        dot.className = 'picker-dot';
+        dot.dataset.hex = hex.toLowerCase();
+        dot.style.background = hex;
+        dot.title = `${name} ${hex}`;
+        dot.addEventListener('click', () => setColor(hex));
+        grid.appendChild(dot);
+        dots.push(dot);
+      }
+      body.appendChild(grid);
+
+      // 原生调色盘
+      const native = document.createElement('input');
+      native.type = 'color';
+      native.className = 'picker-native';
+      native.value = start;
+      native.addEventListener('input', () => setColor(native.value));
+      body.appendChild(native);
+
+      // 颜色代码输入（HEX / RGB / HSL 都认）
+      const input = document.createElement('input');
+      input.className = 'picker-input';
+      input.placeholder = '#6E8FA3  ·  rgb(110,143,163)  ·  hsl(203,18%,54%)';
+      input.value = start;
+      const commit = () => {
+        if (Theme.apply(input.value)) {
+          input.style.color = '';
+          refresh();
+          App.saveUiPref('accent', Theme.current());
+          swatchSync();
+        } else {
+          input.style.color = 'var(--red)';
+        }
+      };
+      input.addEventListener('change', commit);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') commit(); });
+      body.appendChild(input);
+
+      // 预览 + 三种格式回显
+      const preview = document.createElement('div');
+      preview.className = 'picker-preview';
+      body.appendChild(preview);
+
+      const formats = document.createElement('div');
+      formats.className = 'picker-formats';
+      body.appendChild(formats);
+
+      const swatchSync = () => {
+        const el = document.querySelector('.pref-swatch');
+        if (el) el.style.background = Theme.current();
+      };
+
+      const refresh = () => {
+        const rgb = Theme.currentRgb();
+        const hex = Theme.toHex(rgb);
+        preview.style.background = hex;
+        formats.textContent =
+          `${hex}\n${Theme.toRgbString(rgb)}\n${Theme.toHslString(rgb)}`;
+        native.value = hex;
+        if (document.activeElement !== input) input.value = hex;
+        for (const d of dots) d.classList.toggle('is-on', d.dataset.hex === hex);
+      };
+
+      function setColor(v) {
+        if (!Theme.apply(v)) return;
+        refresh();
+        App.saveUiPref('accent', Theme.current());
+        swatchSync();
+      }
+
+      refresh();
+    });
+  },
+
   async saveUiPref(key, value) {
     try {
       const cfg = await window.pulses.db.loadConfig();
@@ -193,6 +285,9 @@ const App = {
       const cfg = await window.pulses.db.loadConfig();
       ui = (cfg && cfg.ui) || {};
     } catch (_) { /* 静默 */ }
+
+    // 主题色（默认青灰）
+    Theme.apply(ui.accent || Theme.DEFAULT);
 
     const anim = ui.animations !== false;          // 默认开
     Motion.setEnabled(anim);
