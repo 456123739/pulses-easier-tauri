@@ -72,7 +72,6 @@ const Developer = {
     const btn = document.getElementById('btn-build');
     const ready = !!this.state.newPath && !!this.state.oldPath && !this.state.busy;
     btn.disabled = !ready;
-    btn.classList.toggle('is-ready', ready);
     if (ready) setBtnLabel(btn, '比对并导出更新包');
   },
 
@@ -82,7 +81,6 @@ const Developer = {
     this.state.busy = true;
     const btn = document.getElementById('btn-build');
     btn.disabled = true;
-    btn.classList.remove('is-ready');
     setBtnLabel(btn, '比对中…');
 
     try {
@@ -112,7 +110,6 @@ const Developer = {
         Log.warn('两个版本没有差异，无需导出');
         setBtnLabel(btn, '无差异');
         btn.disabled = false;
-        btn.classList.add('is-ready');
         return;
       }
 
@@ -122,7 +119,6 @@ const Developer = {
         Log.warn('已取消导出');
         setBtnLabel(btn, '比对并导出更新包');
         btn.disabled = false;
-        btn.classList.add('is-ready');
         return;
       }
 
@@ -159,13 +155,11 @@ const Developer = {
                             { level: 'error' });
         setBtnLabel(btn, '比对并导出更新包');
         btn.disabled = false;
-        btn.classList.add('is-ready');
       }
     } catch (e) {
       Log.error('异常：' + e);
       setBtnLabel(btn, '比对并导出更新包');
       btn.disabled = false;
-      btn.classList.add('is-ready');
     } finally {
       this.state.busy = false;
     }
