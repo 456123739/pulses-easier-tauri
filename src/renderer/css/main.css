@@ -81,7 +81,7 @@ img { display: block; max-width: 100%; }
 .app {
   display: grid;
   grid-template-columns: 252px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) 30px;
+  grid-template-rows: 36px minmax(0, 1fr) 30px;
   width: 100%; height: 100%;
   background: var(--bg-system);
   animation: appIn var(--d-enter) var(--spring-soft) both;
@@ -92,8 +92,35 @@ img { display: block; max-width: 100%; }
 }
 
 /* ════════════════ 侧边栏 ════════════════ */
+/* ── 自定义标题栏 ── */
+.titlebar {
+  grid-column: 1 / -1; grid-row: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 6px 0 16px;
+  background: var(--bg-grouped-2);
+  border-bottom: 1px solid var(--sep);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.titlebar-title {
+  font-size: var(--t-caption);
+  font-weight: 500;
+  color: var(--label-2);
+}
+.titlebar-actions { display: flex; gap: 2px; }
+.tb-btn {
+  width: 40px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: var(--r-small);
+  color: var(--label-2);
+  transition: background var(--d-fast) var(--ease-out),
+              color var(--d-fast) var(--ease-out);
+}
+.tb-btn:hover { background: rgba(255,255,255,.08); color: var(--label); }
+.tb-close:hover { background: var(--red); color: #fff; }
+
 .sidebar {
-  grid-column: 1; grid-row: 1;
+  grid-column: 1; grid-row: 2;
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0;
   overflow: hidden;              /* 关键：给内部滚动容器一个确定边界 */
@@ -297,7 +324,7 @@ img { display: block; max-width: 100%; }
 
 /* ════════════════ 主区 ════════════════ */
 .main {
-  grid-column: 2; grid-row: 1;
+  grid-column: 2; grid-row: 2;
   position: relative; min-width: 0; min-height: 0;
   overflow: hidden;
   background: var(--bg-system);
@@ -516,18 +543,31 @@ img { display: block; max-width: 100%; }
   font-weight: 600;
   font-size: var(--t-caption2);
 }
-.change-badge.add { color: var(--green); }
-.change-badge.mod { color: var(--orange); }
-.change-badge.del { color: var(--red); }
+.change-badge.unchanged { color: var(--green); }
+.change-badge.changed   { color: var(--purple); }
+.change-badge.error     { color: var(--red); }
 .change-name {
   flex: 1 1 auto; min-width: 0;
   color: var(--label-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .change-sum {
-  padding: 6px 10px 8px;
-  font-size: var(--t-caption2);
+  display: flex; gap: 14px; flex-wrap: wrap;
+  padding: 8px 10px 10px;
+  font-size: var(--t-caption);
   color: var(--label-3);
+}
+.change-chip { font-weight: 600; }
+.change-chip.unchanged { color: var(--green); }
+.change-chip.changed   { color: var(--purple); }
+.change-chip.error     { color: var(--red); }
+
+/* ── 日志分隔线 ── */
+.log-divider {
+  flex: 0 0 auto;
+  height: 1px;
+  margin: 2px 0;
+  background: var(--sep);
 }
 
 /* ── 日志（上限封顶，不再撑满整个面板）── */
@@ -642,7 +682,7 @@ img { display: block; max-width: 100%; }
 
 /* ════════════════ 状态栏 ════════════════ */
 .statusbar {
-  grid-column: 1 / -1; grid-row: 2;
+  grid-column: 1 / -1; grid-row: 3;
   display: flex; align-items: center; gap: 10px;
   padding: 0 18px;
   background: var(--bg-grouped-2);

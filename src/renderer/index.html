@@ -16,6 +16,22 @@
 
   <div id="app" class="app is-hidden">
 
+    <!-- ══ 自定义标题栏 ══ -->
+    <header class="titlebar" data-tauri-drag-region>
+      <span class="titlebar-title" data-tauri-drag-region>Pulses Easier</span>
+      <div class="titlebar-actions">
+        <button class="tb-btn" id="win-min" title="最小化">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg>
+        </button>
+        <button class="tb-btn" id="win-max" title="最大化">
+          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+        </button>
+        <button class="tb-btn tb-close" id="win-close" title="关闭">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1"/></svg>
+        </button>
+      </div>
+    </header>
+
     <!-- ══ 侧边栏 ══ -->
     <aside class="sidebar">
       <div class="brand">
@@ -45,7 +61,6 @@
         </section>
 
         <section class="group">
-          <div class="group-title">功能</div>
           <div class="card" id="mode-options">
             <div class="opt" data-mode="player">
               <button class="row" id="nav-locate">
@@ -145,6 +160,7 @@
                 <div class="progress-text" id="progress-text"></div>
               </div>
               <div class="changes is-hidden" id="change-list"></div>
+              <div class="log-divider"></div>
               <div class="log" id="log-list"></div>
             </div>
           </article>
@@ -217,6 +233,7 @@
               <textarea class="md-input" id="changelog-input"
                         placeholder="更新日志"></textarea>
 
+              <div class="log-divider"></div>
               <div class="log" id="dev-log-list"></div>
             </div>
           </article>

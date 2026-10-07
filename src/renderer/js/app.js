@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.7.9';
+const BUILD_STAMP = 'build 0.8.0';
 
 const App = {
   identity: 'player',
@@ -269,6 +269,23 @@ const App = {
   },
 };
 
+// ── 自定义标题栏的窗口控制 ──
+function bindWindowControls() {
+  const W = window.__TAURI__ && window.__TAURI__.window;
+  if (!W || typeof W.getCurrentWindow !== 'function') return;
+  let win = null;
+  try { win = W.getCurrentWindow(); } catch (_) { return; }
+  if (!win) return;
+
+  const on = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', () => { try { fn(); } catch (_) {} });
+  };
+  on('win-min',   () => win.minimize());
+  on('win-max',   () => win.toggleMaximize());
+  on('win-close', () => win.close());
+}
+
 // ── 动画自检 ──
 // 造一个带过渡的元素，改属性后中途采样 opacity：
 // 拿到 0~1 之间 → 过渡确实在跑；拿到 0 或 1 → 过渡没生效。
@@ -320,6 +337,7 @@ async function boot() {
   Player.init();
   Developer.init();
   bindShortcuts();
+  bindWindowControls();
 
   App._revealModeOptions('player', false);
 
@@ -356,9 +374,9 @@ async function boot() {
 
   animationSelfTest().then(ok => {
     if (ok) {
-      Log.debug('动画自检：通过');
+      Log.ok('自检通过');
     } else {
-      Log.error('动画自检：未通过 —— 过渡没有生效');
+      Log.error('自检未通过：过渡动画没有生效');
       App.setStatus('动画未生效，请把这条日志反馈给开发者');
     }
   });
