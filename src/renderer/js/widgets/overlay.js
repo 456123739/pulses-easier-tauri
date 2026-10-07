@@ -103,6 +103,34 @@ const Overlay = {
     });
   },
 
+  // ── 自定义内容面板 ──
+  // build(body, done) 里往 body 塞内容；done(value) 关闭并 resolve。
+  panel(title, build, opts = {}) {
+    return new Promise(resolve => {
+      const scrim = this._scrim();
+      const card = this._card(title, '', opts);
+      const msg = card.querySelector('.ov-msg');
+      if (msg) msg.remove();
+
+      const body = card.querySelector('.ov-body');
+      const done = (value) => this._leave(scrim, card, () => resolve(value));
+      try { build(body, done); } catch (_) { /* 构建失败也不炸 */ }
+
+      const foot = card.querySelector('.ov-foot');
+      const close = this._btn(opts.closeText || '关闭', 'primary');
+      close.onclick = () => done(null);
+      foot.appendChild(close);
+
+      this._enter(scrim, card);
+      document.addEventListener('keydown', function esc(e) {
+        if (e.key === 'Escape') {
+          document.removeEventListener('keydown', esc);
+          close.click();
+        }
+      });
+    });
+  },
+
   // ── 输入框弹窗 ──
   prompt(title, message, opts = {}) {
     return new Promise(resolve => {

@@ -314,16 +314,18 @@ img { display: block; max-width: 100%; }
 }
 
 /* 两个视图常驻 DOM，交叉过渡（不做 display 切换 → 不会闪一下再重载）*/
+/* 关键：淡入淡出要明显快于滑动。
+   两者同长时，位移会被淡入盖住 → 看起来只是「交叉淡入」，没有滑动感。 */
 .view {
   position: absolute; inset: 0;
   display: flex; gap: 16px;
   padding: 18px;
   min-width: 0; min-height: 0;
   opacity: 0;
-  transform: translateX(44px);
+  transform: translateX(56px);
   pointer-events: none;
-  transition: opacity 420ms var(--ease-out),
-              transform 480ms var(--ease-out);
+  transition: opacity 170ms var(--ease-out),
+              transform 460ms var(--ease-out);
 }
 .view.is-active { opacity: 1; transform: none; pointer-events: auto; }
 
@@ -737,3 +739,34 @@ img { display: block; max-width: 100%; }
               transform var(--d-base) var(--ease-out);
 }
 .tip.is-in { opacity: 1; transform: translateY(0); }
+
+/* ════════════════ 首选项面板 ════════════════ */
+.pref-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line-1);
+}
+.pref-row:last-child { border-bottom: none; }
+.pref-main { flex: 1 1 auto; min-width: 0; }
+.pref-label {
+  font-size: var(--t-sm); font-weight: 550;
+  color: var(--text-1); line-height: 1.4;
+}
+.pref-value {
+  margin-top: 3px;
+  font-size: var(--t-micro); line-height: 1.6;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+.pref-btn {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  border-radius: var(--r-sm);
+  background: var(--bg-4);
+  color: var(--text-1);
+  font-size: var(--t-sm);
+  transition: background var(--d-fast) var(--ease-out),
+              transform var(--d-fast) var(--ease-out);
+}
+.pref-btn:hover { background: #2E2E2E; transform: translateY(-1px); }
+.pref-btn:active { transform: translateY(0); }
