@@ -20,12 +20,12 @@ const Player = {
     dz.addEventListener('click', () => this.pickPack());
     dz.addEventListener('dragover', e => {
       e.preventDefault();
-      dz.classList.add('dragover');
+      dz.classList.add('is-over');
     });
-    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+    dz.addEventListener('dragleave', () => dz.classList.remove('is-over'));
     dz.addEventListener('drop', e => {
       e.preventDefault();
-      dz.classList.remove('dragover');
+      dz.classList.remove('is-over');
       const f = e.dataTransfer.files[0];
       if (f && f.path) this.onPackDropped(f.path);
     });
@@ -39,7 +39,7 @@ const Player = {
 
     // 最近打开（STEP 1 内）
     Recent.bind(document.getElementById('step1-recent'),
-                p => this.setModpack(p));
+                p => this.setModpack(p), 5);
   },
 
   // ── STEP 1 ──
@@ -147,7 +147,7 @@ const Player = {
     const ready = !!this.state.modpackPath && !!this.state.diff && !this.state.busy;
     btn.disabled = !ready;
     btn.classList.toggle('is-ready', ready);
-    if (ready) btn.textContent = '开始更新';
+    if (ready) setBtnLabel(btn, '开始更新');
   },
 
   async startUpdate() {
@@ -157,7 +157,7 @@ const Player = {
     const btn = document.getElementById('btn-start');
     btn.disabled = true;
     btn.classList.remove('is-ready');
-    btn.textContent = '更新中…';
+    setBtnLabel(btn, '更新中…');
 
     const panel = document.getElementById('progress-panel');
     panel.classList.remove('is-hidden');
@@ -191,22 +191,24 @@ const Player = {
 
         // 回到「请拖入下一个更新包」
         this.clearPack();
-        document.getElementById('drop-zone').querySelector('.drop-text')
-          .textContent = '本次更新已全部应用 ✓\n请拖入下一个更新包';
-        btn.textContent = '已完成';
+        document.getElementById('drop-zone').querySelector('.drop-main')
+          .textContent = '本次更新已全部应用 ✓';
+        document.getElementById('drop-zone').querySelector('.drop-sub')
+          .textContent = '请拖入下一个更新包';
+        setBtnLabel(btn, '已完成');
         btn.classList.add('is-hidden');
 
         setTimeout(() => panel.classList.add('is-hidden'), 1800);
       } else {
         Log.error('更新失败');
         ptext.textContent = '更新失败';
-        btn.textContent = '重试';
+        setBtnLabel(btn, '重试');
         btn.disabled = false;
         btn.classList.add('is-ready');
       }
     } catch (e) {
       Log.error('更新异常：' + e);
-      btn.textContent = '重试';
+      setBtnLabel(btn, '重试');
       btn.disabled = false;
       btn.classList.add('is-ready');
     } finally {

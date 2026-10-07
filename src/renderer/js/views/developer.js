@@ -73,7 +73,7 @@ const Developer = {
     const ready = !!this.state.newPath && !!this.state.oldPath && !this.state.busy;
     btn.disabled = !ready;
     btn.classList.toggle('is-ready', ready);
-    if (ready) btn.textContent = '比对并导出更新包';
+    if (ready) setBtnLabel(btn, '比对并导出更新包');
   },
 
   // ── STEP 3：比对 + 导出 ──
@@ -83,7 +83,7 @@ const Developer = {
     const btn = document.getElementById('btn-build');
     btn.disabled = true;
     btn.classList.remove('is-ready');
-    btn.textContent = '比对中…';
+    setBtnLabel(btn, '比对中…');
 
     try {
       Log.info('比对两个版本…');
@@ -110,7 +110,7 @@ const Developer = {
 
       if (nAdd + nMod + nDel === 0) {
         Log.warn('两个版本没有差异，无需导出');
-        btn.textContent = '无差异';
+        setBtnLabel(btn, '无差异');
         btn.disabled = false;
         btn.classList.add('is-ready');
         return;
@@ -120,13 +120,13 @@ const Developer = {
       const out = await window.pulses.dialog.saveFile('导出更新包', 'update.eapack');
       if (!out) {
         Log.warn('已取消导出');
-        btn.textContent = '比对并导出更新包';
+        setBtnLabel(btn, '比对并导出更新包');
         btn.disabled = false;
         btn.classList.add('is-ready');
         return;
       }
 
-      btn.textContent = '打包中…';
+      setBtnLabel(btn, '打包中…');
       Log.info('打包更新包…');
 
       const changelog = document.getElementById('changelog-input').value || '';
@@ -152,18 +152,18 @@ const Developer = {
         App.setStatus('已导出更新包');
         await Overlay.alert('导出成功',
           `已保存到：\n${res.path}\n\n大小：${(res.size / 1048576).toFixed(2)} MB`);
-        btn.textContent = '导出完成';
+        setBtnLabel(btn, '导出完成');
       } else {
         Log.error('导出失败：' + ((res && res.msg) || '未知错误'));
         await Overlay.alert('导出失败', (res && res.msg) || '未知错误',
                             { level: 'error' });
-        btn.textContent = '比对并导出更新包';
+        setBtnLabel(btn, '比对并导出更新包');
         btn.disabled = false;
         btn.classList.add('is-ready');
       }
     } catch (e) {
       Log.error('异常：' + e);
-      btn.textContent = '比对并导出更新包';
+      setBtnLabel(btn, '比对并导出更新包');
       btn.disabled = false;
       btn.classList.add('is-ready');
     } finally {

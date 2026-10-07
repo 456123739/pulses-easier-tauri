@@ -6,62 +6,63 @@ const Recent = {
   _targets: [],       // [{el, onPick}]
 
   async load() {
-    try { this._items = await window.pulses.recent.load() || []; }
+    try { this._items = (await window.pulses.recent.load()) || []; }
     catch (_) { this._items = []; }
     return this._items;
   },
 
   async add(path) {
-    try { this._items = await window.pulses.recent.add(path) || []; }
+    try { this._items = (await window.pulses.recent.add(path)) || []; }
     catch (_) { /* 静默 */ }
     this.renderAll();
   },
 
   async clear() {
-    try { this._items = await window.pulses.recent.clear() || []; }
+    try { this._items = (await window.pulses.recent.clear()) || []; }
     catch (_) { this._items = []; }
     this.renderAll();
   },
 
-  // 注册一个渲染目标
-  bind(el, onPick) {
+  bind(el, onPick, maxItems) {
     if (!el) return;
-    this._targets.push({ el, onPick });
-    this._render(el, onPick);
+    this._targets.push({ el, onPick, maxItems });
+    this._render(el, onPick, maxItems);
   },
 
   renderAll() {
-    for (const t of this._targets) this._render(t.el, t.onPick);
+    for (const t of this._targets) this._render(t.el, t.onPick, t.maxItems);
   },
 
-  _render(el, onPick) {
+  _render(el, onPick, maxItems) {
     el.innerHTML = '';
-    if (!this._items.length) {
+    const items = maxItems ? this._items.slice(0, maxItems) : this._items;
+    if (!items.length) {
       const empty = document.createElement('div');
-      empty.className = 'recent-empty';
+      empty.className = 'list-empty';
       empty.textContent = '暂无记录';
       el.appendChild(empty);
       return;
     }
-    this._items.forEach((p, i) => {
-      const name = baseName(p);
+    items.forEach((p, i) => {
       const btn = document.createElement('button');
-      btn.className = 'recent-item';
-      btn.style.animationDelay = (i * 30) + 'ms';
+      btn.className = 'list-item';
+      btn.style.animation = `softUp 260ms var(--ease-out) ${i * 28}ms both`;
 
-      const n = document.createElement('span');
-      n.className = 'recent-item-name';
-      n.textContent = name;
+      const name = document.createElement('span');
+      name.className = 'li-name';
+      name.textContent = baseName(p);
 
-      const d = document.createElement('span');
-      d.className = 'recent-item-path';
-      d.textContent = parentDir(p);
+      const dir = document.createElement('span');
+      dir.className = 'li-path';
+      dir.textContent = parentDir(p);
 
-      btn.appendChild(n);
-      btn.appendChild(d);
+      btn.appendChild(name);
+      btn.appendChild(dir);
       btn.title = p;
       btn.addEventListener('click', () => onPick && onPick(p));
       el.appendChild(btn);
+
+      if (String(p).length > 26) Tooltip.attach(btn, p);
     });
   },
 };

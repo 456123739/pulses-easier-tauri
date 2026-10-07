@@ -1,74 +1,101 @@
-/* theme.css — 全局主题色与变量
-   对应 Python: app/theme.py */
+/* ══════════════════════════════════════════════════════════════
+   theme.css — 设计令牌
+   参考：Awwwards / Dribbble / Mobbin / SaaSFrame 的通用语言
+     · 单一强调色，克制使用；其余靠中性灰阶分层
+     · 表面用「亮度阶梯」而不是重阴影来表达层级
+     · 发丝级描边（6%~10% 白）替代粗边框
+     · 动效统一走 expo-out 弹簧曲线，退场比入场快
+   ══════════════════════════════════════════════════════════════ */
 
 :root {
-  /* 底色 */
-  --window-bg: #0B0B0D;
-  --sidebar-bg: #121214;
-  --card-bg: #1A1A1E;
-  --surface: #222226;
-  --log-bg: #16161A;
-  --input-bg: #1E1E22;
-  --border: #2A2A30;
-  --transparent: transparent;
+  /* ── 表面亮度阶梯（越低越靠后）── */
+  --bg-base:      #08080B;
+  --bg-1:         #0D0D12;
+  --bg-2:         #13131A;
+  --bg-3:         #1A1A23;
+  --bg-4:         #22222D;
+  --bg-inset:     #0A0A0F;
 
-  /* 文字 */
-  --text-primary: #E8E8EC;
-  --text-secondary: #9A9AA2;
-  --text-muted: #6A6A72;
-  --on-accent: #FFFFFF;
+  /* ── 发丝描边 ── */
+  --line-1:       rgba(255, 255, 255, 0.055);
+  --line-2:       rgba(255, 255, 255, 0.09);
+  --line-3:       rgba(255, 255, 255, 0.14);
 
-  /* 强调色 */
-  --accent: #6C8CFF;
-  --accent-hover: #5A7AEF;
-  --accent-glow: rgba(108, 140, 255, 0.15);
-  --warning: #FFB84D;
-  --error: #FF5A5A;
-  --success: #4CAF7D;
+  /* ── 文字 ── */
+  --text-1:       #F2F2F6;
+  --text-2:       #9C9CAC;
+  --text-3:       #63637A;
+  --text-4:       #3E3E50;
 
-  /* 玻璃 */
-  --glass-surface: rgba(30, 30, 36, 0.72);
-  --glass-highlight: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --scrim: rgba(11, 11, 13, 0.72);
+  /* ── 强调色（唯一）── */
+  --accent:       #6D5DFF;
+  --accent-hi:    #8B7BFF;
+  --accent-lo:    #5546E0;
+  --accent-soft:  rgba(109, 93, 255, 0.14);
+  --accent-line:  rgba(139, 123, 255, 0.30);
 
-  /* 圆角 */
-  --r-card: 14px;
-  --r-button: 8px;
-  --r-input: 6px;
-  --r-sm: 4px;
+  /* ── 语义色（低饱和，只在必要时出现）── */
+  --ok:           #3DD68C;
+  --ok-soft:      rgba(61, 214, 140, 0.13);
+  --warn:         #FFB454;
+  --warn-soft:    rgba(255, 180, 84, 0.13);
+  --err:          #FF6B6B;
+  --err-soft:     rgba(255, 107, 107, 0.13);
+  --cyan:         #46D9E8;
+  --cyan-soft:    rgba(70, 217, 232, 0.12);
 
-  /* 字体 */
-  --font: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif;
-  --font-mono: "Cascadia Mono", "Consolas", monospace;
-  --fs-title: 18px;
-  --fs-subtitle: 15px;
-  --fs-body: 14px;
-  --fs-small: 12px;
-  --fs-tiny: 11px;
+  /* ── 圆角 ── */
+  --r-xs:  6px;
+  --r-sm:  9px;
+  --r-md:  13px;
+  --r-lg:  18px;
+  --r-pill: 999px;
 
-  /* 动画 */
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);        /* ease-out-expo */
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* in-out-cubic */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --t-hover: 150ms;
-  --t-switch: 300ms;
-  --t-dialog: 240ms;
-  --t-fade: 200ms;
-  --t-progress: 420ms;
-  --t-slide: 340ms;
-  --t-tip: 140ms;
+  /* ── 阴影（分层、低不透明度）── */
+  --sh-1: 0 1px 2px rgba(0,0,0,.35);
+  --sh-2: 0 4px 14px rgba(0,0,0,.34), 0 1px 2px rgba(0,0,0,.3);
+  --sh-3: 0 16px 44px rgba(0,0,0,.46), 0 2px 6px rgba(0,0,0,.3);
+  --sh-4: 0 32px 80px rgba(0,0,0,.58);
+  --sh-accent: 0 8px 30px rgba(109, 93, 255, .34);
+
+  /* ── 字体 ── */
+  --font: "Inter", "Microsoft YaHei UI", "PingFang SC", "Segoe UI",
+          system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", "Consolas",
+               "DejaVu Sans Mono", monospace;
+
+  /* 模块化字阶（1.2 比例） */
+  --t-micro: 10.5px;
+  --t-tiny:  11.5px;
+  --t-sm:    12.5px;
+  --t-base:  13.5px;
+  --t-md:    15px;
+  --t-lg:    18px;
+  --t-xl:    23px;
+
+  /* ── 动效曲线 ── */
+  --ease-out:   cubic-bezier(0.16, 1, 0.30, 1);   /* expo-out，入场 */
+  --ease-in:    cubic-bezier(0.55, 0, 1, 0.45);   /* 退场（更快）*/
+  --ease-soft:  cubic-bezier(0.32, 0.72, 0, 1);   /* 弹簧感 */
+  --ease-linear: linear;
+
+  /* ── 时长 ── */
+  --d-fast:   120ms;
+  --d-base:   190ms;
+  --d-slow:   300ms;
+  --d-enter:  380ms;
+  --d-exit:   180ms;
 }
 
-/* 无障碍：减少动画 */
+/* 无障碍：尊重系统「减少动态效果」 */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --t-hover: 0ms;
-    --t-switch: 0ms;
-    --t-dialog: 0ms;
-    --t-fade: 0ms;
-    --t-progress: 0ms;
-    --t-slide: 0ms;
-    --t-tip: 0ms;
+    --d-fast: 1ms; --d-base: 1ms; --d-slow: 1ms;
+    --d-enter: 1ms; --d-exit: 1ms;
+  }
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
   }
 }

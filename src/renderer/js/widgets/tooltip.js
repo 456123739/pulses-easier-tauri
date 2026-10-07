@@ -1,14 +1,13 @@
-// tooltip.js — 窗内悬停提示（DOM 定位，替代 Python tooltip.py）
+// tooltip.js — 窗内悬停提示（带小箭头，跟随定位）
 
 const Tooltip = {
-  _box: null,
+  _el: null,
   _timer: null,
 
   attach(el, text, opts = {}) {
     el.addEventListener('mouseenter', () => {
       if (opts.delay) {
-        this._timer = setTimeout(() => this._show(el, text, opts),
-                                 opts.delay);
+        this._timer = setTimeout(() => this._show(el, text, opts), opts.delay);
       } else {
         this._show(el, text, opts);
       }
@@ -19,56 +18,45 @@ const Tooltip = {
 
   _show(el, text, opts) {
     this._hide();
-    const box = document.createElement('div');
-    box.style.cssText = `
-      position: fixed; z-index: 9000;
-      background: var(--log-bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 6px 10px;
-      font-size: var(--fs-small); color: var(--text-primary);
-      max-width: ${opts.wraplength || 520}px;
-      word-break: break-all; white-space: pre-wrap;
-      opacity: 0; transform: translateY(6px);
-      transition: opacity var(--t-tip) var(--ease-out),
-                  transform var(--t-tip) var(--ease-out);
-      pointer-events: none;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-    `;
-    box.textContent = typeof text === 'function' ? text() : text;
 
-    document.body.appendChild(box);
-    this._box = box;
+    const tip = document.createElement('div');
+    tip.className = 'tip';
+    tip.textContent = typeof text === 'function' ? text() : text;
+    document.body.appendChild(tip);
+    this._el = tip;
 
-    // 定位
-    const rect = el.getBoundingClientRect();
-    const bw = box.offsetWidth, bh = box.offsetHeight;
-    let x = rect.left + 8;
-    let y = rect.bottom + 6;
+    // 定位：默认在下方，装不下翻到上方
+    const r = el.getBoundingClientRect();
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
 
-    // 下方装不下 → 翻到上方
-    if (y + bh > window.innerHeight - 6) {
-      y = rect.top - bh - 6;
+    let below = true;
+    let top = r.bottom + 10;
+    if (top + th > window.innerHeight - 8) {
+      top = r.top - th - 10;
+      below = false;
     }
-    // 右侧超界 → 往左让
-    x = Math.max(6, Math.min(x, window.innerWidth - bw - 6));
-    box.style.left = x + 'px';
-    box.style.top = y + 'px';
+    let left = r.left + 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
 
-    requestAnimationFrame(() => {
-      box.style.opacity = '1';
-      box.style.transform = 'translateY(0)';
-    });
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    if (!below) tip.classList.add('below');
+
+    // 箭头跟着控件左边缘
+    const arrowX = Math.max(10, Math.min(r.left - left + 8, tw - 20));
+    tip.style.setProperty('--arrow-x', arrowX + 'px');
+
+    requestAnimationFrame(() => tip.classList.add('is-in'));
   },
 
   _hide() {
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
-    if (this._box) {
-      this._box.style.opacity = '0';
-      const b = this._box;
-      this._box = null;
-      setTimeout(() => b.remove(), 160);
-    }
+    const tip = this._el;
+    if (!tip) return;
+    this._el = null;
+    tip.classList.remove('is-in');
+    setTimeout(() => tip.remove(), 220);
   },
 };
 
