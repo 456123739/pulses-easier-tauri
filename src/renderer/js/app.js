@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.8.0';
+const BUILD_STAMP = 'build 0.8.1';
 
 const App = {
   identity: 'player',
@@ -73,40 +73,50 @@ const App = {
     this._navActive = id;
   },
 
-  // ── 设置（iOS 分组行：标签 + 当前值 + 箭头，无解释文字）──
+  // ── 设置（iOS 分组行）──
   async openPrefs() {
     this.markNav('btn-prefs');
 
     let dbPath = null;
     try { dbPath = await window.pulses.db.getPath(); } catch (_) {}
 
-    await Overlay.panel('设置', (body, done) => {
-      // 数据库位置
-      const r1 = document.createElement('div');
-      r1.className = 'pref-row';
+    await Overlay.panel('设置', (body) => {
+      const mkRow = (label, right) => {
+        const row = document.createElement('div');
+        row.className = 'pref-row';
+        const main = document.createElement('div');
+        main.className = 'pref-main';
+        const l = document.createElement('div');
+        l.className = 'pref-label';
+        l.textContent = label;
+        main.appendChild(l);
+        row.appendChild(main);
+        if (right) row.appendChild(right);
+        return row;
+      };
 
-      const m1 = document.createElement('div');
-      m1.className = 'pref-main';
-      const l1 = document.createElement('div');
-      l1.className = 'pref-label';
-      l1.textContent = '数据库位置';
-      m1.appendChild(l1);
+      const mkSwitch = (on, onChange) => {
+        const sw = document.createElement('button');
+        sw.className = 'pref-switch' + (on ? ' is-on' : '');
+        sw.addEventListener('click', () => {
+          const next = !sw.classList.contains('is-on');
+          sw.classList.toggle('is-on', next);
+          onChange(next);
+        });
+        return sw;
+      };
 
-      const v1 = document.createElement('div');
-      v1.className = 'pref-value';
-      v1.textContent = dbPath || '未设置';
-      v1.title = dbPath || '';
-
-      r1.appendChild(m1);
-      r1.appendChild(v1);
-
-      const b1 = document.createElement('button');
-      b1.className = 'pref-btn';
-      b1.textContent = '更改';
-      b1.addEventListener('click', async () => {
+      // 1. 数据库位置
+      const val = document.createElement('div');
+      val.className = 'pref-value';
+      val.textContent = dbPath || '未设置';
+      val.title = dbPath || '';
+      const btn = document.createElement('button');
+      btn.className = 'pref-btn';
+      btn.textContent = '更改';
+      btn.addEventListener('click', async () => {
         const picked = await window.pulses.dialog.openFolder('选择数据库位置');
         if (!picked) return;
-
         if (dbPath) {
           const valid = await window.pulses.db.isValid(picked);
           const ok = await Overlay.confirm('更换数据库位置',
@@ -114,7 +124,6 @@ const App = {
             { confirmText: valid ? '切换' : '新建并切换' });
           if (!ok) return;
         }
-
         const created = await window.pulses.db.create(picked);
         if (!created) {
           Log.error('更换数据库位置失败：' + picked);
@@ -122,77 +131,76 @@ const App = {
           return;
         }
         dbPath = picked;
-        v1.textContent = dbPath;
-        v1.title = dbPath;
+        val.textContent = dbPath;
+        val.title = dbPath;
         Log.ok('数据库位置已更新：' + dbPath);
         App.setStatus('数据库：' + dbPath);
         await App.loadWhitelist();
       });
 
-      r1.appendChild(b1);
+      const r1 = document.createElement('div');
+      r1.className = 'pref-row';
+      const m1 = document.createElement('div');
+      m1.className = 'pref-main';
+      const l1 = document.createElement('div');
+      l1.className = 'pref-label';
+      l1.textContent = '数据库位置';
+      m1.appendChild(l1);
+      r1.appendChild(m1);
+      r1.appendChild(val);
+      r1.appendChild(btn);
       body.appendChild(r1);
 
-      // 完整日志（开关，无说明文字）
-      const r2 = document.createElement('div');
-      r2.className = 'pref-row';
-      const m2 = document.createElement('div');
-      m2.className = 'pref-main';
-      const l2 = document.createElement('div');
-      l2.className = 'pref-label';
-      l2.textContent = '完整日志';
-      m2.appendChild(l2);
+      // 2. 界面动画
+      body.appendChild(mkRow('界面动画', mkSwitch(Motion.enabled, (on) => {
+        Motion.setEnabled(on);
+        App.saveUiPref('animations', on);
+      })));
 
-      const sw = document.createElement('button');
-      sw.className = 'pref-switch' + (Log.isVerbose() ? ' is-on' : '');
-      sw.addEventListener('click', async () => {
-        const on = !Log.isVerbose();
+      // 3. 路径自动滚动
+      body.appendChild(mkRow('路径自动滚动', mkSwitch(Marquee.enabled(), (on) => {
+        Marquee.set(on);
+        App.saveUiPref('path_marquee', on);
+      })));
+
+      // 4. 完整日志
+      body.appendChild(mkRow('完整日志', mkSwitch(Log.isVerbose(), (on) => {
         Log.setVerbose(on);
-        sw.classList.toggle('is-on', on);
-        await App.saveVerbose(on);
-      });
+        App.saveUiPref('verbose_log', on);
+      })));
 
-      r2.appendChild(m2);
-      r2.appendChild(sw);
-      body.appendChild(r2);
-
-      // 版本
-      const r3 = document.createElement('div');
-      r3.className = 'pref-row';
-      const m3 = document.createElement('div');
-      m3.className = 'pref-main';
-      const l3 = document.createElement('div');
-      l3.className = 'pref-label';
-      l3.textContent = '版本';
-      m3.appendChild(l3);
-
-      const v3 = document.createElement('div');
-      v3.className = 'pref-value';
-      v3.textContent = document.getElementById('status-version').textContent || '—';
-
-      r3.appendChild(m3);
-      r3.appendChild(v3);
-      body.appendChild(r3);
+      // 5. 版本
+      const ver = document.createElement('div');
+      ver.className = 'pref-value';
+      ver.textContent = document.getElementById('status-version').textContent || '—';
+      body.appendChild(mkRow('版本', ver));
     });
   },
 
-  async saveVerbose(flag) {
+  async saveUiPref(key, value) {
     try {
       const cfg = await window.pulses.db.loadConfig();
       if (!cfg) return;
       cfg.ui = cfg.ui || {};
-      cfg.ui.verbose_log = flag;
+      cfg.ui[key] = value;
       await window.pulses.db.saveConfig(cfg);
     } catch (_) { /* 静默 */ }
   },
 
-  async loadVerbose() {
+  async loadUiPrefs() {
+    let ui = {};
     try {
       const cfg = await window.pulses.db.loadConfig();
-      const on = !!(cfg && cfg.ui && cfg.ui.verbose_log);
-      Log.setVerbose(on);
-    } catch (_) {
-      Log.setVerbose(false);
-    }
+      ui = (cfg && cfg.ui) || {};
+    } catch (_) { /* 静默 */ }
+
+    const anim = ui.animations !== false;          // 默认开
+    Motion.setEnabled(anim);
+
+    const marquee = ui.path_marquee !== false;     // 默认开
+    Marquee.set(marquee);
+
+    Log.setVerbose(!!ui.verbose_log);              // 默认关
   },
 
   // ── 其它侧边栏动作 ──
@@ -369,7 +377,7 @@ async function boot() {
   await Recent.load();
   Recent.bind(document.getElementById('sb-recent-list'), p => Player.setModpack(p));
   Recent.renderAll();
-  await App.loadVerbose();
+  await App.loadUiPrefs();
   await App.loadWhitelist();
 
   animationSelfTest().then(ok => {
