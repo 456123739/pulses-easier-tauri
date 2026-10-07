@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.8.2';
+const BUILD_STAMP = 'build 0.8.3';
 
 const App = {
   identity: 'player',
@@ -428,77 +428,131 @@ function bindShortcuts() {
 }
 
 // ── 启动 ──
+// 设计原则：任何一步失败都不能把启动卡死。
+//   1. 每一步独立 try/catch，失败的记下来继续走
+//   2. 3 秒看门狗：无论如何强制进主界面
+//   3. 失败原因写进日志与状态栏，方便定位
 async function boot() {
-  Overlay.init();
-  Log.attach(document.getElementById('log-list'));
+  const failures = [];
 
-  let ver = '';
-  try { ver = await window.pulses.version(); } catch (_) {}
-  const verEl = document.getElementById('status-version');
-  if (verEl) verEl.textContent = (ver ? 'v' + ver : '') + ' · ' + BUILD_STAMP;
+  const step = async (name, fn) => {
+    try {
+      await fn();
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : String(e);
+      failures.push(name + ' → ' + msg);
+      try { console.error('[boot]', name, e); } catch (_) {}
+    }
+  };
 
-  Player.init();
-  Developer.init();
-  bindShortcuts();
-  bindWindowControls();
+  let shown = false;
+  const showMain = () => {
+    if (shown) return;
+    shown = true;
 
-  App._revealModeOptions('player', false);
+    try {
+      const splash = document.getElementById('splash');
+      const appEl = document.getElementById('app');
+      if (splash) {
+        splash.classList.add('is-out');
+        setTimeout(() => { splash.style.display = 'none'; }, 340);
+      }
+      if (appEl) appEl.classList.remove('is-hidden');
+      document.querySelectorAll('.group').forEach((g, i) => {
+        g.style.animation = `groupIn 420ms var(--ease-out) ${120 + i * 60}ms both`;
+      });
+    } catch (_) { /* 忽略 */ }
 
-  document.querySelectorAll('.seg-btn').forEach(b =>
-    b.addEventListener('click', () => App.switchIdentity(b.dataset.id)));
+    try {
+      if (failures.length) {
+        Log.error('启动异常 ' + failures.length + ' 处：' + failures.join('；'));
+        App.setStatus('启动异常：' + failures[0]);
+      } else {
+        App.setStatus('就绪');
+      }
+    } catch (_) { /* 忽略 */ }
+  };
 
-  document.getElementById('btn-prefs')
-    .addEventListener('click', () => App.openPrefs());
-  document.getElementById('btn-clean-cache')
-    .addEventListener('click', () => App.cleanCache());
-  document.getElementById('btn-recent-clear')
-    .addEventListener('click', async () => {
+  // 看门狗：正常 1.25 秒进主界面，超 3 秒强制进
+  const watchdog = setTimeout(showMain, 3000);
+
+  await step('初始化', () => {
+    Overlay.init();
+    Log.attach(document.getElementById('log-list'));
+  });
+
+  await step('版本号', async () => {
+    let ver = '';
+    try { ver = await window.pulses.version(); } catch (_) {}
+    const el = document.getElementById('status-version');
+    if (el) el.textContent = (ver ? 'v' + ver : '') + ' · ' + BUILD_STAMP;
+  });
+
+  await step('视图', () => {
+    Player.init();
+    Developer.init();
+  });
+
+  await step('快捷键与窗口控制', () => {
+    bindShortcuts();
+    bindWindowControls();
+  });
+
+  await step('侧栏模式项', () => {
+    App._revealModeOptions('player', false);
+  });
+
+  await step('事件绑定', () => {
+    document.querySelectorAll('.seg-btn').forEach(b =>
+      b.addEventListener('click', () => App.switchIdentity(b.dataset.id)));
+
+    const on = (id, fn) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', fn);
+    };
+    on('btn-prefs',        () => App.openPrefs());
+    on('btn-clean-cache',  () => App.cleanCache());
+    on('btn-recent-clear', async () => {
       await Recent.clear();
       Log.debug('已清空最近打开');
     });
-  document.getElementById('btn-whitelist-add')
-    .addEventListener('click', () => App.addWhitelist());
+    on('btn-whitelist-add', () => App.addWhitelist());
 
-  // 侧边栏快捷入口（点完标记选中 → 图标播动画）
-  const nav = (id, fn) => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('click', () => { App.markNav(id); fn(); });
-  };
-  nav('nav-locate',   () => Player.pickModpack());
-  nav('nav-pickpack', () => Player.pickPack());
-  nav('nav-newpack',  () => Developer.pickNew());
-  nav('nav-oldpack',  () => Developer.pickOld());
-
-  await Recent.load();
-  Recent.bind(document.getElementById('sb-recent-list'), p => Player.setModpack(p));
-  Recent.renderAll();
-  await App.loadUiPrefs();
-  await App.loadWhitelist();
-
-  animationSelfTest().then(ok => {
-    if (ok) {
-      Log.ok('自检通过');
-    } else {
-      Log.error('自检未通过：过渡动画没有生效');
-      App.setStatus('动画未生效，请把这条日志反馈给开发者');
-    }
+    const nav = (id, fn) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', () => { App.markNav(id); fn(); });
+    };
+    nav('nav-locate',   () => Player.pickModpack());
+    nav('nav-pickpack', () => Player.pickPack());
+    nav('nav-newpack',  () => Developer.pickNew());
+    nav('nav-oldpack',  () => Developer.pickOld());
   });
 
-  // 启动动画 → 主界面
-  setTimeout(() => {
-    const splash = document.getElementById('splash');
-    const appEl = document.getElementById('app');
+  await step('最近打开', async () => {
+    await Recent.load();
+    Recent.bind(document.getElementById('sb-recent-list'),
+                p => Player.setModpack(p));
+    Recent.renderAll();
+  });
 
-    splash.classList.add('is-out');
-    appEl.classList.remove('is-hidden');
+  await step('界面设置', () => App.loadUiPrefs());
+  await step('白名单', () => App.loadWhitelist());
 
-    document.querySelectorAll('.panel').forEach((p, i) => {
-      p.style.animation = `panelIn 420ms var(--ease-out) ${120 + i * 60}ms both`;
+  await step('动画自检', () => {
+    animationSelfTest().then(ok => {
+      if (ok) {
+        Log.ok('自检通过');
+      } else {
+        Log.error('自检未通过：过渡动画没有生效');
+        App.setStatus('动画未生效，请把这条日志反馈给开发者');
+      }
     });
+  });
 
-    setTimeout(() => { splash.style.display = 'none'; }, 340);
-    App.setStatus('就绪');
-    Log.debug('Pulses Easier 已启动');
+  // 正常入场
+  setTimeout(() => {
+    clearTimeout(watchdog);
+    showMain();
   }, 1250);
 }
 

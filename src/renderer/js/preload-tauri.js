@@ -2,9 +2,18 @@
 // 替代 Electron preload.js：用 Tauri 的 invoke / event 系统
 // 需要 tauri.conf.json 里开启 app.withGlobalTauri = true
 
-const { invoke } = window.__TAURI__.core;
-const { listen } = window.__TAURI__.event;
-const dlg = window.__TAURI__.dialog;
+// Tauri 桥。任何一项缺失都不能让本文件加载失败 ——
+// 否则 window.pulses 永远不会被定义，整个前端就废了。
+const T = window.__TAURI__ || {};
+const invoke = (T.core && typeof T.core.invoke === 'function')
+  ? T.core.invoke
+  : async () => null;
+const listen = (T.event && typeof T.event.listen === 'function')
+  ? T.event.listen
+  : async () => () => {};
+const dlg = (T.dialog && typeof T.dialog.open === 'function')
+  ? T.dialog
+  : { open: async () => null, save: async () => null };
 
 async function onEvent(name, cb) {
   try { await listen(name, (e) => cb(e.payload)); } catch (_) {}

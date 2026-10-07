@@ -31,6 +31,9 @@ jobs:
         run: |
           node -e "const fs=require('fs'),path=require('path');let files=[];function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f);if(fs.statSync(p).isDirectory())walk(p);else if(f.endsWith('.js'))files.push(p)}}walk('src');let ok=0,fail=0;for(const f of files){try{new Function(fs.readFileSync(f,'utf-8'));ok++}catch(e){fail++;console.log('ERR:',f,e.message)}}console.log('JS:',ok,'ok,',fail,'fail');if(fail)process.exit(1)"
 
+      - name: 渲染层冒烟测试
+        run: node tests/smoke-renderer.js
+
       - name: 安装 Tauri CLI
         run: npm install
 
