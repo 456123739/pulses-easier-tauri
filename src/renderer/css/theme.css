@@ -1,0 +1,74 @@
+/* theme.css — 全局主题色与变量
+   对应 Python: app/theme.py */
+
+:root {
+  /* 底色 */
+  --window-bg: #0B0B0D;
+  --sidebar-bg: #121214;
+  --card-bg: #1A1A1E;
+  --surface: #222226;
+  --log-bg: #16161A;
+  --input-bg: #1E1E22;
+  --border: #2A2A30;
+  --transparent: transparent;
+
+  /* 文字 */
+  --text-primary: #E8E8EC;
+  --text-secondary: #9A9AA2;
+  --text-muted: #6A6A72;
+  --on-accent: #FFFFFF;
+
+  /* 强调色 */
+  --accent: #6C8CFF;
+  --accent-hover: #5A7AEF;
+  --accent-glow: rgba(108, 140, 255, 0.15);
+  --warning: #FFB84D;
+  --error: #FF5A5A;
+  --success: #4CAF7D;
+
+  /* 玻璃 */
+  --glass-surface: rgba(30, 30, 36, 0.72);
+  --glass-highlight: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --scrim: rgba(11, 11, 13, 0.72);
+
+  /* 圆角 */
+  --r-card: 14px;
+  --r-button: 8px;
+  --r-input: 6px;
+  --r-sm: 4px;
+
+  /* 字体 */
+  --font: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", monospace;
+  --fs-title: 18px;
+  --fs-subtitle: 15px;
+  --fs-body: 14px;
+  --fs-small: 12px;
+  --fs-tiny: 11px;
+
+  /* 动画 */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);        /* ease-out-expo */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* in-out-cubic */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-hover: 150ms;
+  --t-switch: 300ms;
+  --t-dialog: 240ms;
+  --t-fade: 200ms;
+  --t-progress: 420ms;
+  --t-slide: 340ms;
+  --t-tip: 140ms;
+}
+
+/* 无障碍：减少动画 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-hover: 0ms;
+    --t-switch: 0ms;
+    --t-dialog: 0ms;
+    --t-fade: 0ms;
+    --t-progress: 0ms;
+    --t-slide: 0ms;
+    --t-tip: 0ms;
+  }
+}

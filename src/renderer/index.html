@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulses Easier</title>
+  <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <!-- 启动页 -->
+  <div id="splash" class="splash">
+    <div class="splash-logo">
+      <img src="assets/logo.png" alt="Pulses Easier">
+    </div>
+    <div class="splash-progress"><div class="splash-bar"></div></div>
+    <div class="splash-text">正在准备…</div>
+  </div>
+
+  <!-- 主窗口 -->
+  <div id="app" class="app hidden">
+    <!-- 侧边栏 -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-logo">
+        <img src="assets/logo.png" alt="Pulses Easier">
+      </div>
+      <nav id="mode-tabs" class="mode-tabs">
+        <button class="mode-tab active" data-mode="player">玩家端</button>
+        <button class="mode-tab" data-mode="developer">开发者端</button>
+      </nav>
+      <div id="sidebar-options" class="sidebar-options">
+        <!-- 动态填充 -->
+      </div>
+      <div class="sidebar-footer">
+        <button id="btn-prefs" class="sidebar-btn">⚙ 首选项</button>
+        <button id="btn-more" class="sidebar-btn">⋯ 更多</button>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main id="content" class="content">
+      <!-- 玩家端 -->
+      <section id="player-view" class="view active">
+        <div class="view-left">
+          <div id="modpack-info" class="info-card">
+            <div class="info-label">当前整合包</div>
+            <div id="modpack-name" class="info-value">未定位</div>
+            <button id="btn-locate" class="btn btn-sm">重新定位</button>
+          </div>
+          <div id="drop-zone" class="drop-zone">
+            <div class="drop-icon">📁</div>
+            <div class="drop-text">拖入更新包（.zip / .eapack）</div>
+            <div class="drop-hint">或点击选择文件</div>
+          </div>
+          <div id="changelog-preview" class="changelog-preview hidden">
+            <div class="changelog-title">更新日志</div>
+            <div id="changelog-content" class="changelog-content"></div>
+          </div>
+        </div>
+        <div class="view-right">
+          <div id="change-list" class="change-list">
+            <div class="empty-hint">拖入更新包后，这里显示变更列表</div>
+          </div>
+          <div id="progress-panel" class="progress-panel hidden">
+            <div class="progress-bar-track">
+              <div id="progress-bar" class="progress-bar-fill"></div>
+            </div>
+            <div id="progress-text" class="progress-text">就绪</div>
+          </div>
+          <button id="btn-start" class="btn btn-primary btn-start hidden">开始更新</button>
+        </div>
+      </section>
+
+      <!-- 开发者端 -->
+      <section id="developer-view" class="view hidden">
+        <div class="dev-left">
+          <div class="info-card">
+            <div class="info-label">源整合包</div>
+            <button id="btn-select-source" class="btn btn-sm">选择源整合包</button>
+            <div id="source-name" class="info-value"></div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">目标整合包</div>
+            <button id="btn-select-target" class="btn btn-sm">选择目标整合包</button>
+            <div id="target-name" class="info-value"></div>
+          </div>
+          <button id="btn-compare" class="btn btn-primary">比对</button>
+        </div>
+        <div class="dev-right">
+          <div id="dev-change-list" class="change-list">
+            <div class="empty-hint">比对后显示差异</div>
+          </div>
+          <div id="strategy-table" class="strategy-table hidden"></div>
+          <div id="changelog-editor" class="changelog-editor hidden">
+            <textarea id="changelog-input" placeholder="更新日志（Markdown）…"></textarea>
+          </div>
+          <button id="btn-export" class="btn btn-primary hidden">导出更新包</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- 底部状态栏 -->
+    <footer id="statusbar" class="statusbar">
+      <span id="status-text">就绪</span>
+      <span id="status-version"></span>
+    </footer>
+  </div>
+
+  <!-- 弹窗遮罩 + 卡片容器 -->
+  <div id="overlay-container"></div>
+
+  <script src="js/preload-tauri.js"></script>
+  <script src="js/motion.js"></script>
+  <script src="js/glass.js"></script>
+  <script src="js/widgets/overlay.js"></script>
+  <script src="js/widgets/tooltip.js"></script>
+  <script src="js/views/player.js"></script>
+  <script src="js/views/developer.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

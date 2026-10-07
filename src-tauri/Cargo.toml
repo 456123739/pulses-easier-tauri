@@ -1,0 +1,30 @@
+[package]
+name = "pulses-easier"
+version = "0.7.0-glass-beta"
+description = "Pulses Easier — Minecraft 整合包更新器（Tauri 美化版）"
+authors = ["YG"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+sha2 = "0.10"
+zip = "2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking", "json"] }
+tokio = { version = "1", features = ["full"] }
+walkdir = "2"
+dirs = "5"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

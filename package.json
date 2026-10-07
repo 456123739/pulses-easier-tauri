@@ -1,0 +1,15 @@
+{
+  "name": "pulses-easier",
+  "version": "0.7.0-glass-beta",
+  "description": "Pulses Easier — Minecraft 整合包更新器（Tauri 美化版）",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:win": "tauri build --target x86_64-pc-windows-msvc"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
