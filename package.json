@@ -1,6 +1,6 @@
 {
   "name": "pulses-easier",
-  "version": "0.8.7-glass-beta",
+  "version": "0.8.8-beta",
   "description": "Pulses Easier — Minecraft 整合包更新器（Tauri 美化版）",
   "private": true,
   "scripts": {
