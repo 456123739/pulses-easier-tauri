@@ -27,7 +27,17 @@ pub fn load() -> Vec<String> {
         Ok(t) => t,
         Err(_) => return Vec::new(),
     };
-    serde_json::from_str::<Vec<String>>(&text).unwrap_or_default()
+    let items: Vec<String> = serde_json::from_str(&text).unwrap_or_default();
+    // 整合包已经被删掉/移走的条目不再显示，并顺手写回去
+    let before = items.len();
+    let items: Vec<String> = items
+        .into_iter()
+        .filter(|p| std::path::Path::new(p).exists())
+        .collect();
+    if items.len() != before {
+        let _ = save(&items);
+    }
+    items
 }
 
 pub fn add(path: &str) -> Vec<String> {

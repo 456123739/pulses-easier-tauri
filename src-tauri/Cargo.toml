@@ -1,6 +1,6 @@
 [package]
 name = "pulses-easier"
-version = "0.9.8-beta"
+version = "0.9.9-beta"
 description = "Pulses Easier — Minecraft 整合包更新器（Tauri 美化版）"
 authors = ["YG"]
 edition = "2021"
@@ -21,6 +21,12 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 tokio = { version = "1", features = ["full"] }
 walkdir = "2"
 dirs = "5"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = ["Win32_Storage_FileSystem"] }
 
 [profile.release]
 opt-level = "z"

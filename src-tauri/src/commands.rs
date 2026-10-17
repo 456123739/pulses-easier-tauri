@@ -248,8 +248,53 @@ pub async fn fs_unzip(zip_path: String, dest_dir: String) -> Result<Value, Strin
     Ok(eapack::unzip(&PathBuf::from(&zip_path), &PathBuf::from(&dest_dir)).await)
 }
 
+/// 目标路径所在磁盘的 (可用, 总量)。路径不存在时往上找到第一个存在的祖先。
+#[cfg(unix)]
+fn disk_space(p: &std::path::Path) -> Option<(u64, u64)> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    let c = CString::new(p.as_os_str().as_bytes()).ok()?;
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+        return None;
+    }
+    let bs = st.f_frsize as u64;
+    Some((st.f_bavail as u64 * bs, st.f_blocks as u64 * bs))
+}
+
+#[cfg(windows)]
+fn disk_space(p: &std::path::Path) -> Option<(u64, u64)> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let mut w: Vec<u16> = p.as_os_str().encode_wide().collect();
+    w.push(0);
+    let (mut free, mut total) = (0u64, 0u64);
+    let ok = unsafe {
+        GetDiskFreeSpaceExW(w.as_ptr(), &mut free, &mut total, std::ptr::null_mut())
+    };
+    if ok == 0 {
+        None
+    } else {
+        Some((free, total))
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn disk_space(_p: &std::path::Path) -> Option<(u64, u64)> {
+    None
+}
+
 #[tauri::command]
-pub fn fs_space(_path: String) -> Value {
-    // 简化版：返回 0，让前端不因空间检查阻断
-    serde_json::json!({"free": 0u64, "total": 0u64})
+pub fn fs_space(path: String) -> Value {
+    let mut p = PathBuf::from(&path);
+    while !p.exists() {
+        match p.parent() {
+            Some(parent) => p = parent.to_path_buf(),
+            None => break,
+        }
+    }
+    match disk_space(&p) {
+        Some((free, total)) => serde_json::json!({"free": free, "total": total}),
+        None => serde_json::json!({"free": 0u64, "total": 0u64}),
+    }
 }

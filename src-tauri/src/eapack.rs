@@ -107,6 +107,7 @@ pub fn modpack_info(root: &Path) -> Value {
     });
 
     // mmc-pack.json / manifest.json
+    let mut named = false;
     for f in &["mmc-pack.json", "manifest.json"] {
         let p = root.join(f);
         if let Ok(text) = fs::read_to_string(&p) {
@@ -114,6 +115,7 @@ pub fn modpack_info(root: &Path) -> Value {
                 if let Some(n) = data.get("name").and_then(|v| v.as_str()) {
                     if !n.is_empty() {
                         info["name"] = Value::String(n.to_string());
+                        named = true;
                     }
                 }
                 if let Some(v) = data.get("version").and_then(|v| v.as_str()) {
@@ -123,14 +125,18 @@ pub fn modpack_info(root: &Path) -> Value {
         }
     }
 
-    // instance.cfg (MMC)
-    if let Ok(text) = fs::read_to_string(root.join("instance.cfg")) {
-        for line in text.lines() {
-            if let Some(eq) = line.find('=') {
-                let key = &line[..eq];
-                let val = &line[eq + 1..];
-                if key == "name" && info["name"].as_str().unwrap_or("").is_empty() {
-                    info["name"] = Value::String(val.to_string());
+    // instance.cfg (MMC) —— 只有在 mmc-pack/manifest 没给名字时才用。
+    // （以前写成「目录名为空才用」，而目录名永远非空，所以这段是死代码）
+    if !named {
+        if let Ok(text) = fs::read_to_string(root.join("instance.cfg")) {
+            for line in text.lines() {
+                if let Some(eq) = line.find('=') {
+                    if &line[..eq] == "name" {
+                        let v = line[eq + 1..].trim();
+                        if !v.is_empty() {
+                            info["name"] = Value::String(v.to_string());
+                        }
+                    }
                 }
             }
         }
@@ -204,16 +210,22 @@ pub async fn export(app: &AppHandle, opts: Value) -> Value {
         let _ = zip.write_all(changelog.as_bytes());
     }
 
-    // 打包文件内容
+    // 打包文件内容；找不到的必须报出来，不能静默跳过
+    let mut missing: Vec<String> = Vec::new();
     if let Some(files) = opts.get("files").and_then(|v| v.as_array()) {
         for f in files {
             if let Some(rel) = f.as_str() {
                 let fp = root.join(rel);
                 if fp.is_file() {
-                    if let Ok(data) = fs::read(&fp) {
-                        let _ = zip.start_file(rel, zopt);
-                        let _ = zip.write_all(&data);
+                    match fs::read(&fp) {
+                        Ok(data) => {
+                            let _ = zip.start_file(rel, zopt);
+                            let _ = zip.write_all(&data);
+                        }
+                        Err(_) => missing.push(rel.to_string()),
                     }
+                } else {
+                    missing.push(rel.to_string());
                 }
             }
         }
@@ -225,7 +237,12 @@ pub async fn export(app: &AppHandle, opts: Value) -> Value {
 
     let size = fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
     let _ = app.emit("pack:progress", json!({"done": true, "path": &output}));
-    json!({"ok": true, "path": output, "size": size})
+    json!({
+        "ok": missing.is_empty(),
+        "path": output,
+        "size": size,
+        "missing": missing,
+    })
 }
 
 /// 删除更新包的解压目录。
