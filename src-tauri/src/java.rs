@@ -324,13 +324,47 @@ pub fn runtime_root() -> PathBuf {
     crate::db::app_dir().join("runtime")
 }
 
+/// 在一个目录里找 java 可执行文件所在的 home。
+///
+/// 解压出来的 JDK 层级不固定：
+///   jdk-17/jdk-17.0.2/bin/java          华为云、Zulu 的 zip
+///   jdk-17/bin/java                     某些包只有一层
+///   jdk-17/zulu-17.jdk/Contents/Home/bin/java   macOS
+/// 所以往下找最多 3 层，不能只看第一层 —— 之前只看一层，
+/// 装完下次扫描就找不到，界面上又显示「没找到 Java」。
+fn find_java_home(base: &Path) -> Option<PathBuf> {
+    let mut stack = vec![(base.to_path_buf(), 0usize)];
+    while let Some((d, depth)) = stack.pop() {
+        if d.join("bin").join(exe_name()).is_file() {
+            return Some(d);
+        }
+        if depth >= 3 {
+            continue;
+        }
+        for sub in list_dirs(&d) {
+            // .jdk 包里面是 Contents/Home
+            if sub.extension().map(|e| e == "jdk").unwrap_or(false) {
+                let home = sub.join("Contents/Home");
+                if home.join("bin").join(exe_name()).is_file() {
+                    return Some(home);
+                }
+            }
+            stack.push((sub, depth + 1));
+        }
+    }
+    None
+}
+
+/// 给测试用的公开入口
+pub fn find_java_home_pub(base: &Path) -> Option<PathBuf> {
+    find_java_home(base)
+}
+
 fn installed_dirs() -> Vec<PathBuf> {
     let mut out = Vec::new();
     for d in list_dirs(&runtime_root()) {
-        if d.join("bin").join(exe_name()).is_file() {
-            out.push(d);
-        } else if d.join("Contents/Home/bin").join(exe_name()).is_file() {
-            out.push(d.join("Contents/Home"));
+        if let Some(home) = find_java_home(&d) {
+            out.push(home);
         }
     }
     out
@@ -661,16 +695,10 @@ pub fn install(feature: u32) -> Result<Java, String> {
 pub fn install_into(feature: u32, root: &Path) -> Result<Java, String> {
     let root = root.to_path_buf();
 
-    // 已经装过就不重复下（200 MB+）
+    // 已经装过就不重复下，一份 200 MB 上下
     for d in list_dirs(&root) {
-        let cand = if d.join("bin").join(exe_name()).is_file() {
-            d
-        } else if d.join("Contents/Home/bin").join(exe_name()).is_file() {
-            d.join("Contents/Home")
-        } else {
-            continue;
-        };
-        if let Some(j) = make(cand.join("bin").join(exe_name()), "installed") {
+        let Some(home) = find_java_home(&d) else { continue };
+        if let Some(j) = make(home.join("bin").join(exe_name()), "installed") {
             if j.major == feature {
                 return Ok(j);
             }

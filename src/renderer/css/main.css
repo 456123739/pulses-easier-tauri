@@ -798,7 +798,9 @@ body.is-booting .titlebar { display: none; }
 
 /* ════════════════ 弹窗（iOS alert）════════════════ */
 .ov-scrim {
-  position: fixed; inset: 0; z-index: 8000;
+  /* 从标题栏下面开始：盖住标题栏会让窗口拖不动 */
+  position: fixed; top: 36px; left: 0; right: 0; bottom: 0;
+  z-index: 8000;
   /* 压暗 + 高斯模糊：后面内容不可辨认 */
   background: rgba(0, 0, 0, .52);
   backdrop-filter: blur(24px) saturate(130%);
@@ -1128,78 +1130,114 @@ body.is-booting .titlebar { display: none; }
 }
 
 /* ════════════════ 安装整合包 ════════════════ */
-.ins-sum { padding: 2px 16px 12px; }
-.ins-title {
-  font-size: var(--t-headline);
+/* 不做弹窗：弹窗会盖住标题栏，窗口直接拖不动，
+   而且把注意力从内容上拉走了。这里就是玩家端里的一个整屏状态。 */
+#player-view.is-installing > .col { display: none; }
+
+.install {
+  position: absolute; inset: 18px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 5;
+}
+.install-card {
+  width: 100%; max-width: 520px;
+  padding: 24px 24px 20px;
+  background: var(--bg-grouped-2);
+  border-radius: var(--r-card);
+  display: flex; flex-direction: column;
+  min-width: 0;
+}
+.install-kicker {
+  font-size: var(--t-caption2);
+  color: var(--label-3);
+  letter-spacing: .04em;
+}
+.install-name {
+  margin-top: 6px;
+  font-size: var(--t-title3);
   font-weight: 600;
   color: var(--label);
+  line-height: 1.25;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ins-sub {
-  margin-top: 3px;
-  font-size: var(--t-caption);
-  color: var(--label-3);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-/* 行内控件贴在右边 */
-.pref-row-field { padding-right: 12px; }
-.pref-row > .ins-control {
-  flex: 0 0 auto;
-  width: 196px;
-  /* .ov-input 自带 margin-top:14px（弹窗里输入框是单独一行），
-     放进列表行会被顶下去半个行高 —— 「实例名」那行文字偏下就是这个 */
-  margin-top: 0;
-}
-/* 行内的输入框比弹窗里的紧凑一点，跟 46px 的行高配 */
-.pref-row .ov-input {
-  padding: 8px 12px;
-  transition: background var(--d-fast) var(--ease-out),
-              box-shadow var(--d-fast) var(--ease-out);
-}
-.pref-row .ov-input:focus {
-  background: var(--bg-fill);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
-.ins-select,
-.ins-ver {
-  margin-top: 0;
-  padding: 7px 10px;
-  font-family: var(--font);
+.install-meta {
+  margin-top: 6px;
   font-size: var(--t-footnote);
+  color: var(--label-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.install-detect {
+  margin-top: 14px;
+  display: flex; gap: 8px;
+}
+.install-detect .install-input { text-align: left; }
+.install-detect #ins-mc { flex: 0 0 110px; }
+.install-detect #ins-loader { flex: 0 0 110px; }
+.install-detect #ins-loaderver { flex: 1 1 auto; }
+
+.install-fields { margin-top: 22px; }
+.install-field {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--sep);
+}
+.install-label {
+  flex: 0 0 auto;
+  font-size: var(--t-subhead);
+  color: var(--label);
+}
+.install-input {
+  flex: 1 1 auto; min-width: 0;
+  padding: 8px 12px;
   border-radius: var(--r-small);
   background: var(--bg-fill-2);
   border: none;
   color: var(--label);
+  font-family: var(--font);
+  font-size: var(--t-subhead);
+  text-align: right;
   outline: none;
-  width: 100%;
+  transition: background var(--d-fast) var(--ease-out),
+              box-shadow var(--d-fast) var(--ease-out);
 }
-.ins-select {
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 22px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M1 1l3 3 3-3' fill='none' stroke='%238E8E93' stroke-width='1.2' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
+.install-input:focus {
+  background: var(--bg-fill);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
-.ins-select option { background: var(--bg-tertiary); color: var(--label); }
-
-.ins-inline { display: flex; gap: 6px; width: 196px; }
-.ins-inline > .ins-select { width: 96px; }
-.ins-inline > .ins-ver { width: 94px; padding-left: 8px; padding-right: 6px; }
-
-.pref-hint {
-  margin-top: 2px;
-  font-size: var(--t-caption2);
+.install-hint {
+  padding-top: 10px;
+  font-size: var(--t-caption);
   color: var(--label-3);
+  min-height: 1.2em;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.pref-value.is-bad { color: var(--red); }
+.install-hint.is-bad { color: var(--red); }
 
-.ins-go {
-  width: 100%;
-  margin: 16px 0 2px;
-  height: 44px;
+/* 进度就一条 2px 的线，别的都不要 */
+.install-bar { margin-top: 18px; }
+.install-track {
+  height: 2px; border-radius: 1px;
+  background: var(--bg-fill-2);
+  overflow: hidden;
 }
+.install-track > i {
+  display: block; height: 100%; width: 0;
+  background: var(--accent);
+  border-radius: 1px;
+  transition: width 220ms var(--ease-out);
+}
+.install-line {
+  margin-top: 10px;
+  font-size: var(--t-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.install-actions {
+  margin-top: 20px;
+  display: flex; align-items: center; gap: 12px;
+}
+.install-actions .cta { flex: 1 1 auto; height: 44px; }
+.install-actions .link-btn { flex: 0 0 auto; }

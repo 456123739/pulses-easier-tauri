@@ -80,119 +80,163 @@ pub fn pack_kind(zip_path: &Path) -> Value {
             names.push(n.to_string());
         }
     }
-    let root = root_prefix(&names);
-    let has = |rel: &str| names.iter().any(|n| n == &format!("{root}{rel}"));
+
+    // 按文件名找条目，忽略大小写，深度不超过 max_depth。
+    // 不能只看「根目录」：7-Zip 多套一层、有人手滑改了大小写，都得认。
+    let find = |target: &str, max_depth: usize| -> Option<String> {
+        names
+            .iter()
+            .filter(|n| {
+                n.rsplit('/')
+                    .next()
+                    .map(|f| f.eq_ignore_ascii_case(target))
+                    .unwrap_or(false)
+            })
+            .filter(|n| n.matches('/').count() <= max_depth)
+            .min_by_key(|n| n.matches('/').count())
+            .cloned()
+    };
+
+    let read_json = |ar: &mut ZipArchive<fs::File>, name: &str| -> Option<Value> {
+        let t = read_head(ar, name, 4 * 1024 * 1024)?;
+        let t = t.trim_start_matches('\u{feff}');
+        serde_json::from_str::<Value>(t).ok()
+    };
 
     // ── 1. Modrinth ──
-    if has("modrinth.index.json") {
-        if let Some(t) = read_head(&mut ar, &format!("{root}modrinth.index.json"), 65536) {
-            if let Ok(v) = serde_json::from_str::<Value>(&t) {
-                let deps = v.get("dependencies").cloned().unwrap_or(Value::Null);
-                let g = |k: &str| deps.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
-                let (loader, ver) = if !g("neoforge").is_empty() {
-                    ("neoforge".to_string(), g("neoforge"))
-                } else if !g("forge").is_empty() {
-                    ("forge".to_string(), g("forge"))
-                } else if !g("fabric-loader").is_empty() {
-                    ("fabric".to_string(), g("fabric-loader"))
-                } else if !g("quilt-loader").is_empty() {
-                    ("quilt".to_string(), g("quilt-loader"))
-                } else {
-                    ("vanilla".to_string(), String::new())
-                };
-                return json!({
-                    "ok": true, "kind": "modpack", "format": "modrinth",
-                    "name": v.get("name").and_then(|x| x.as_str()).unwrap_or(""),
-                    "version": v.get("versionId").and_then(|x| x.as_str()).unwrap_or(""),
-                    "mc": g("minecraft"), "loader": loader, "loaderVer": ver,
-                });
-            }
+    if let Some(name) = find("modrinth.index.json", 2) {
+        if let Some(v) = read_json(&mut ar, &name) {
+            let deps = v.get("dependencies").cloned().unwrap_or(Value::Null);
+            let g = |k: &str| deps.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let (loader, ver) = if !g("neoforge").is_empty() {
+                ("neoforge".to_string(), g("neoforge"))
+            } else if !g("forge").is_empty() {
+                ("forge".to_string(), g("forge"))
+            } else if !g("fabric-loader").is_empty() {
+                ("fabric".to_string(), g("fabric-loader"))
+            } else if !g("quilt-loader").is_empty() {
+                ("quilt".to_string(), g("quilt-loader"))
+            } else {
+                ("vanilla".to_string(), String::new())
+            };
+            return json!({
+                "ok": true, "kind": "modpack", "format": "modrinth",
+                "name": v.get("name").and_then(|x| x.as_str()).unwrap_or(""),
+                "version": v.get("versionId").and_then(|x| x.as_str()).unwrap_or(""),
+                "mc": g("minecraft"), "loader": loader, "loaderVer": ver,
+            });
         }
         return json!({ "ok": true, "kind": "modpack", "format": "modrinth" });
     }
 
     // ── 2. Prism / MultiMC ──
-    if has("mmc-pack.json") {
-        if let Some(t) = read_head(&mut ar, &format!("{root}mmc-pack.json"), 65536) {
-            if let Ok(v) = serde_json::from_str::<Value>(&t) {
-                let comps = v.get("components").and_then(|x| x.as_array()).cloned().unwrap_or_default();
-                let find = |uid: &str| -> String {
-                    comps.iter()
-                        .find(|c| c.get("uid").and_then(|x| x.as_str()) == Some(uid))
-                        .and_then(|c| c.get("version"))
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                };
-                let mc = find("net.minecraft");
-                let mut loader = "vanilla".to_string();
-                let mut ver = String::new();
-                for (uid, l) in [
-                    ("net.minecraftforge", "forge"),
-                    ("net.neoforged", "neoforge"),
-                    ("net.fabricmc.fabric-loader", "fabric"),
-                    ("org.quiltmc.quilt-loader", "quilt"),
-                ] {
-                    let vv = find(uid);
-                    if !vv.is_empty() {
-                        loader = l.to_string();
-                        ver = vv;
-                        break;
-                    }
+    if let Some(name) = find("mmc-pack.json", 2) {
+        if let Some(v) = read_json(&mut ar, &name) {
+            let comps = v
+                .get("components")
+                .and_then(|x| x.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let find_c = |uid: &str| -> String {
+                comps
+                    .iter()
+                    .find(|c| c.get("uid").and_then(|x| x.as_str()) == Some(uid))
+                    .and_then(|c| c.get("version"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
+            let mc = find_c("net.minecraft");
+            let mut loader = "vanilla".to_string();
+            let mut ver = String::new();
+            for (uid, l) in [
+                ("net.minecraftforge", "forge"),
+                ("net.neoforged", "neoforge"),
+                ("net.fabricmc.fabric-loader", "fabric"),
+                ("org.quiltmc.quilt-loader", "quilt"),
+            ] {
+                let vv = find_c(uid);
+                if !vv.is_empty() {
+                    loader = l.to_string();
+                    ver = vv;
+                    break;
                 }
-                return json!({
-                    "ok": true, "kind": "modpack", "format": "prism",
-                    "name": "", "version": "", "mc": mc,
-                    "loader": loader, "loaderVer": ver,
-                });
             }
+            return json!({
+                "ok": true, "kind": "modpack", "format": "prism",
+                "name": "", "version": "", "mc": mc,
+                "loader": loader, "loaderVer": ver,
+            });
         }
         return json!({ "ok": true, "kind": "modpack", "format": "prism" });
     }
 
     // ── 3. CurseForge ──
-    if has("manifest.json") {
-        if let Some(t) = read_head(&mut ar, &format!("{root}manifest.json"), 262144) {
-            if let Ok(v) = serde_json::from_str::<Value>(&t) {
-                if let Some(mc) = v
+    if let Some(name) = find("manifest.json", 2) {
+        if let Some(v) = read_json(&mut ar, &name) {
+            if let Some(mc) = v
+                .get("minecraft")
+                .and_then(|m| m.get("version"))
+                .and_then(|x| x.as_str())
+            {
+                let loaders = v
                     .get("minecraft")
-                    .and_then(|m| m.get("version"))
-                    .and_then(|x| x.as_str())
-                {
-                    let loaders = v
-                        .get("minecraft")
-                        .and_then(|m| m.get("modLoaders"))
-                        .and_then(|x| x.as_array())
-                        .cloned()
-                        .unwrap_or_default();
-                    let primary = loaders
-                        .iter()
-                        .find(|l| l.get("primary").and_then(|p| p.as_bool()).unwrap_or(false))
-                        .or_else(|| loaders.first());
-                    let (loader, ver) = primary
-                        .and_then(|l| l.get("id").and_then(|x| x.as_str()))
-                        .map(crate::mcinstall::split_loader_id)
-                        .unwrap_or(("vanilla".to_string(), String::new()));
-                    return json!({
-                        "ok": true, "kind": "modpack", "format": "curseforge",
-                        "name": v.get("name").and_then(|x| x.as_str()).unwrap_or(""),
-                        "version": v.get("version").and_then(|x| x.as_str()).unwrap_or(""),
-                        "mc": mc, "loader": loader, "loaderVer": ver,
-                    });
-                }
+                    .and_then(|m| m.get("modLoaders"))
+                    .and_then(|x| x.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                let primary = loaders
+                    .iter()
+                    .find(|l| l.get("primary").and_then(|p| p.as_bool()).unwrap_or(false))
+                    .or_else(|| loaders.first());
+                let (loader, ver) = primary
+                    .and_then(|l| l.get("id").and_then(|x| x.as_str()))
+                    .map(crate::mcinstall::split_loader_id)
+                    .unwrap_or(("vanilla".to_string(), String::new()));
+                return json!({
+                    "ok": true, "kind": "modpack", "format": "curseforge",
+                    "name": v.get("name").and_then(|x| x.as_str()).unwrap_or(""),
+                    "version": v.get("version").and_then(|x| x.as_str()).unwrap_or(""),
+                    "mc": mc, "loader": loader, "loaderVer": ver,
+                });
             }
         }
     }
 
-    // ── 4. 我们自己的更新包 ──
+    // ── 4. 包里自带一份 instances 版本 JSON ──
+    // 国内作者经常把整个 versions/ 一起打进去，那份 JSON 里就有版本和加载器
+    if let Some(name) = names
+        .iter()
+        .filter(|n| {
+            let depth = n.matches('/').count();
+            n.to_ascii_lowercase().contains("versions/")
+                && n.to_ascii_lowercase().ends_with(".json")
+                && depth <= 4
+        })
+        .min_by_key(|n| n.matches('/').count())
+        .cloned()
+    {
+        if let Some(v) = read_json(&mut ar, &name) {
+            if let Some(mc) = version_json_mc(&v) {
+                let (loader, ver) = version_json_loader(&v, &mc);
+                return json!({
+                    "ok": true, "kind": "modpack", "format": "unknown",
+                    "name": "", "version": "",
+                    "mc": mc, "loader": loader, "loaderVer": ver,
+                });
+            }
+        }
+    }
+
+    // ── 5. 我们自己的更新包 ──
     let pulses = ["settings.json", "hashes.json", "strategies.json", "whitelist.json"]
         .iter()
-        .any(|f| has(f));
-    if pulses || has("manifest.json") || has("CHANGELOG.md") {
+        .any(|f| find(f, 1).is_some());
+    if pulses || find("manifest.json", 1).is_some() || find("CHANGELOG.md", 1).is_some() {
         let mut name = String::new();
         let mut version = String::new();
-        if let Some(t) = read_head(&mut ar, &format!("{root}manifest.json"), 8192) {
-            if let Ok(v) = serde_json::from_str::<Value>(&t) {
+        if let Some(n) = find("manifest.json", 1) {
+            if let Some(v) = read_json(&mut ar, &n) {
                 name = v.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string();
                 version = v.get("version").and_then(|x| x.as_str()).unwrap_or("").to_string();
             }
@@ -203,15 +247,76 @@ pub fn pack_kind(zip_path: &Path) -> Value {
         });
     }
 
-    // ── 5. 什么元信息都没有：按目录结构猜 ──
-    if names.iter().any(|n| n.starts_with(&format!("{root}overrides/")))
-        || names.iter().any(|n| n == &format!("{root}mods/"))
-        || names.iter().any(|n| n.starts_with(&format!("{root}mods/")))
-    {
+    // ── 6. 什么元信息都没有：按目录结构猜 ──
+    let looks_like_pack = names.iter().any(|n| {
+        let l = n.to_ascii_lowercase();
+        l.contains("overrides/") || l.contains("mods/") || l.contains("config/")
+    });
+    if looks_like_pack {
         return json!({ "ok": true, "kind": "modpack", "format": "unknown" });
     }
 
     json!({ "ok": true, "kind": "update", "format": "unknown" })
+}
+
+/// 从一份版本 JSON 里读出 Minecraft 版本号
+fn version_json_mc(v: &Value) -> Option<String> {
+    if let Some(p) = v.get("inheritsFrom").and_then(|x| x.as_str()) {
+        if !p.is_empty() {
+            return Some(p.to_string());
+        }
+    }
+    let id = v.get("id").and_then(|x| x.as_str()).unwrap_or("");
+    let first = id.split('-').next().unwrap_or("");
+    if first.starts_with('1') && first.contains('.') {
+        return Some(first.to_string());
+    }
+    None
+}
+
+/// 从版本 JSON 的 id 里抠出加载器版本号
+///
+///   "1.20.1-forge-47.2.0"            → 47.2.0
+///   "fabric-loader-0.15.11-1.20.1"   → 0.15.11
+///   "neoforge-21.1.1"                → 21.1.1
+fn loader_ver_from_id(id: &str, loader: &str, mc: &str) -> String {
+    let low = id.to_ascii_lowercase();
+    // neoforge 的名字里含 "forge-"，必须先匹配它
+    let marker = match loader {
+        "neoforge" => "neoforge-",
+        "forge" => "forge-",
+        "quilt" => "quilt-loader-",
+        "fabric" => "fabric-loader-",
+        _ => return String::new(),
+    };
+    let Some(i) = low.find(marker) else {
+        return String::new();
+    };
+    let mut rest = low[i + marker.len()..].to_string();
+    if let Some(stripped) = rest.strip_suffix(&format!("-{mc}")) {
+        rest = stripped.to_string();
+    }
+    rest.trim_start_matches(&format!("{mc}-")).to_string()
+}
+
+/// 从一份版本 JSON 里猜加载器和它的版本
+fn version_json_loader(v: &Value, mc: &str) -> (String, String) {
+    let id = v.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let low = id.to_ascii_lowercase();
+    let main = v.get("mainClass").and_then(|x| x.as_str()).unwrap_or("");
+    let loader = if low.contains("neoforge") || main.contains("neoforged") {
+        "neoforge"
+    } else if low.contains("forge") || main.contains("bootstraplauncher") {
+        "forge"
+    } else if low.contains("quilt") || main.contains("quiltmc") {
+        "quilt"
+    } else if low.contains("fabric") || main.contains("fabricmc") {
+        "fabric"
+    } else {
+        return ("vanilla".to_string(), String::new());
+    };
+    let ver = loader_ver_from_id(&low, loader, mc);
+    (loader.to_string(), ver)
 }
 
 /// 把 zip 条目名净化成「解压目录内的相对路径」。

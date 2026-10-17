@@ -1,15 +1,14 @@
-// installer.js — 安装整合包（把 CF / MR 整合包变成 PCL 能直接扫到的实例）
+// installer.js — 安装整合包
+//
+// 不是弹窗，是玩家端里的一个整屏状态：弹窗会盖住标题栏，窗口直接拖不动。
 //
 // 能不问就不问：
-//   · 游戏目录 —— 记住上次用的；没有就从已定位的整合包路径推（.../versions/X → ...）
-//   · 版本 / 加载器 —— 直接从 zip 里的 manifest.json / mmc-pack.json 读，不解压
-//   · 实例名 —— 取整合包自带的名字，没有就用 zip 文件名
-//   · Java —— 只在 Forge / NeoForge 时需要，本机有就直接用
-// 真正需要玩家点头的只有两件事：装不装、装不装 Java。
+//   游戏目录 —— 记住上次的，没有就从已定位的整合包路径推
+//   版本 / 加载器 —— 直接从 zip 里读，不解压
+//   版本名 —— 取整合包自带的名字，没有就用 zip 文件名
+//   Java —— 缺了就在点「开始安装」时自动下，装完接着往下走
 //
-// 产出（PCL 版本隔离的标准布局，PCL 一扫描就能看到）：
-//   <游戏目录>/versions/<实例名>/<实例名>.json + mods/ config/ …
-//   <游戏目录>/libraries/  assets/
+// 产出是 PCL 版本隔离的标准布局，PCL 一扫描就能看到。
 
 const MCRootKey = 'pulses.mcRoot';
 
@@ -21,7 +20,7 @@ const Installer = {
     busy: false,
   },
 
-  // 侧栏入口：只问整合包，其余能推就推
+  // 侧栏入口：只问整合包
   async open() {
     if (this.state.busy) {
       Log.warn('正在安装中，请稍候');
@@ -37,340 +36,257 @@ const Installer = {
     await this.startWith(zip, kind);
   },
 
-  // 已经知道 zip 了（拖进来的 / 别处识别出来的）
+  // 已经知道 zip 了，拖进来的就走这里
   async startWith(zip, kind) {
     if (this.state.busy) {
       Log.warn('正在安装中，请稍候');
       return;
     }
 
-    // 游戏目录：记住的 → 从已定位整合包推 → 实在没有才问
     let root = guessGameDir();
     if (!root) {
-      root = await window.pulses.dialog.openFolder('选择游戏目录（.minecraft 那一层）');
+      root = await window.pulses.dialog.openFolder('选择游戏目录，就是 .minecraft 那一层');
       if (!root) return;
     }
 
     this.state = { root, zip, meta: kind || {}, busy: false };
-    await this._panel();
+    await this.show();
   },
 
-  // ── 配置面板 ──
-  async _panel() {
+  // ── 界面 ──
+  async show() {
     const st = this.state;
     const meta = st.meta || {};
     const known = !!(meta && meta.ok && meta.mc);
 
-    // 认不出来才需要版本列表
-    let releases = [];
+    const view = document.getElementById('install-view');
+    const pv = document.getElementById('player-view');
+    if (!view || !pv) return;
+
+    pv.classList.add('is-installing');
+    view.classList.remove('is-hidden');
+
+    const kicker = document.getElementById('ins-kicker');
+    const name = document.getElementById('ins-name');
+    const metaEl = document.getElementById('ins-meta');
+    const input = document.getElementById('ins-instance');
+    const hint = document.getElementById('ins-hint');
+    const bar = document.getElementById('ins-bar');
+    const fill = document.getElementById('ins-fill');
+    const line = document.getElementById('ins-line');
+    const go = document.getElementById('ins-go');
+    const back = document.getElementById('ins-back');
+    const detect = document.getElementById('ins-detect');
+
+    const instName = sanitizeInstance(meta.name || zipName(st.zip));
+
+    kicker.textContent = formatLabel(meta.format);
+    name.textContent = meta.name || zipName(st.zip);
+    metaEl.classList.remove('is-hidden');
+    metaEl.textContent = known
+      ? `${loaderLabel(meta.loader, meta.loaderVer)} · Minecraft ${meta.mc} · ${st.root}`
+      : st.root;
+    input.value = instName;
+
+    bar.classList.add('is-hidden');
+    fill.style.width = '0%';
+    line.textContent = '';
+    go.disabled = false;
+    go.textContent = '开始安装';
+    back.classList.remove('is-hidden');
+    input.disabled = false;
+    detect.classList.add('is-hidden');
+    hint.classList.remove('is-bad');
+
+    // 认不出整合包信息时才让人选
+    let mcVal = known ? meta.mc : '';
+    let loader = meta.loader || 'forge';
+    let loaderVer = meta.loaderVer || '';
+
     if (!known) {
-      App.setStatus('正在获取版本列表…');
+      const sel = document.getElementById('ins-mc');
+      const lsel = document.getElementById('ins-loader');
+      const lver = document.getElementById('ins-loaderver');
+      detect.classList.remove('is-hidden');
+      metaEl.classList.add('is-hidden');
+      if (sel) sel.innerHTML = '';
+      if (lver) lver.value = '';
+      if (lsel) lsel.value = loader;
+
+      let releases = [];
       try {
         const r = await window.pulses.mc.versions(true);
         releases = (r && r.versions) || [];
       } catch (_) {}
-      App.setStatus('就绪');
+      for (const v of releases) {
+        const o = document.createElement('option');
+        o.value = v.id;
+        o.textContent = v.id;
+        if (sel) sel.appendChild(o);
+      }
+      if (releases.length) mcVal = releases[0].id;
+
+      if (sel) sel.onchange = () => { mcVal = sel.value; refreshHint(); };
+      if (lsel) lsel.onchange = () => { loader = lsel.value; refreshHint(); };
+      if (lver) lver.oninput = () => { loaderVer = lver.value.trim(); };
     }
 
-    const instName = sanitizeInstance(meta.name || zipName(st.zip));
+    // ── 状态提示 ──
+    let javaList = null;
+    const getJavaList = async () => {
+      if (javaList) return javaList;
+      try { javaList = (await window.pulses.mc.javaList()).list || []; }
+      catch (_) { javaList = []; }
+      return javaList;
+    };
 
-    await Overlay.panel('安装整合包', (body, done) => {
-      const card = body.closest('.ov-card');
-      const footBtn = card && card.querySelector('.ov-foot .ov-btn');
+    let needMajor = 0;
+    const refreshHint = async () => {
+      hint.classList.remove('is-bad');
+      if (!mcVal) {
+        hint.textContent = '先选个版本';
+        hint.classList.add('is-bad');
+        return;
+      }
+      if (loader === 'vanilla' || loader === 'fabric' || loader === 'quilt') {
+        hint.textContent = '这个加载器不需要 Java';
+        return;
+      }
+      try { needMajor = (await window.pulses.mc.javaNeed(mcVal)).major || 17; }
+      catch (_) { needMajor = 17; }
 
-      // 概要
-      const sum = el('div', 'ins-sum');
-      sum.appendChild(el('div', 'ins-title', instName));
-      sum.appendChild(el('div', 'ins-sub',
-        `${formatLabel(meta.format)} · ${baseName(st.zip)}`));
-      body.appendChild(sum);
+      const list = await getJavaList();
+      const ok = list.filter(j => j.major >= needMajor).sort((a, b) => a.major - b.major)[0];
+      hint.textContent = ok
+        ? `Java ${ok.major} 已就绪`
+        : `需要 Java ${needMajor}，点开始安装会自动下载`;
+    };
+    refreshHint();
 
-      // 版本
-      let mcVal = known ? meta.mc : '';
-      if (known) {
-        body.appendChild(infoRow('版本', mcVal));
-      } else {
-        const sel = document.createElement('select');
-        sel.className = 'ins-select';
-        for (const v of releases) {
-          const o = document.createElement('option');
-          o.value = v.id;
-          o.textContent = v.id;
-          sel.appendChild(o);
-        }
-        if (releases.length) mcVal = releases[0].id;
-        body.appendChild(fieldRow('版本', sel, '请手动选'));
-        sel.addEventListener('change', () => { mcVal = sel.value; refreshJava(); });
+    // ── 开始 ──
+    const setBusy = (b) => {
+      this.state.busy = b;
+      go.disabled = b;
+      input.disabled = b;
+      back.classList.toggle('is-hidden', b);
+    };
+
+    go.onclick = async () => {
+      if (this.state.busy) return;
+      if (!mcVal) {
+        hint.textContent = '先选个版本';
+        hint.classList.add('is-bad');
+        return;
       }
 
-      // 加载器
-      let loader = meta.loader || (known ? 'vanilla' : 'forge');
-      let loaderVer = meta.loaderVer || '';
+      const instance = sanitizeInstance(input.value.trim() || instName);
+      setBusy(true);
+      go.textContent = '安装中…';
+      bar.classList.remove('is-hidden');
+      hint.classList.remove('is-bad');
+      hint.textContent = '';
 
-      if (known) {
-        body.appendChild(infoRow('加载器', loaderLabel(loader, loaderVer)));
-      } else {
-        const sel = document.createElement('select');
-        sel.className = 'ins-select';
-        for (const [v, t] of [
-          ['forge', 'Forge'], ['neoforge', 'NeoForge'],
-          ['fabric', 'Fabric'], ['quilt', 'Quilt'], ['vanilla', '原版'],
-        ]) {
-          const o = document.createElement('option');
-          o.value = v; o.textContent = t;
-          if (v === loader) o.selected = true;
-          sel.appendChild(o);
-        }
-        const inp = document.createElement('input');
-        inp.className = 'ov-input ins-ver';
-        inp.placeholder = '版本';
-        inp.value = loaderVer;
-        inp.title = '加载器版本，留空自动取最新';
-
-        const wrap = el('div', 'ins-inline');
-        wrap.appendChild(sel);
-        wrap.appendChild(inp);
-        body.appendChild(fieldRow('加载器', wrap, '版本可留空'));
-
-        sel.addEventListener('change', () => { loader = sel.value; refreshJava(); });
-        inp.addEventListener('input', () => { loaderVer = inp.value.trim(); });
-      }
-
-      // 游戏目录（只展示，不占一次询问）
-      body.appendChild(infoRow('游戏目录', st.root));
-
-      // 实例名
-      const nameInp = document.createElement('input');
-      nameInp.className = 'ov-input';
-      nameInp.value = instName;
-      nameInp.placeholder = '实例名（PCL 里显示的名字）';
-      body.appendChild(fieldRow('实例名', nameInp, ''));
-
-      // Java 状态
-      const javaRow = el('div', 'pref-row');
-      const javaMain = el('div', 'pref-main');
-      javaMain.appendChild(el('div', 'pref-label', 'Java'));
-      javaRow.appendChild(javaMain);
-      const javaVal = el('div', 'pref-value', '检查中…');
-      javaRow.appendChild(javaVal);
-      const javaBtn = document.createElement('button');
-      javaBtn.className = 'pref-btn is-hidden';
-      javaBtn.textContent = '自动安装';
-      javaRow.appendChild(javaBtn);
-      body.appendChild(javaRow);
-
-      // 进度 + 开始
-      const prog = el('div', 'progress is-hidden');
-      const track = el('div', 'progress-track');
-      const fill = el('i', 'progress-fill');
-      track.appendChild(fill);
-      const ptext = el('div', 'progress-text');
-      prog.appendChild(track);
-      prog.appendChild(ptext);
-      body.appendChild(prog);
-
-      const start = document.createElement('button');
-      start.className = 'cta ins-go';
-      start.textContent = '开始安装';
-      body.appendChild(start);
-
-      const err = el('div', 'ov-err');
-      body.appendChild(err);
-
-      // ── 状态 ──
-      let javaPath = '';
-      let needMajor = 0;
-      // 找 Java 要起子进程（每份 100~300ms），本机装了七八份时很慢，
-      // 所以整块面板只查一次，装完新 Java 再往缓存里塞
-      let javaList = null;
-      const getJavaList = async () => {
-        if (javaList) return javaList;
-        try { javaList = (await window.pulses.mc.javaList()).list || []; }
-        catch (_) { javaList = []; }
-        return javaList;
-      };
-
-      const refreshJava = async () => {
-        javaBtn.classList.add('is-hidden');
-        javaPath = '';
-        if (loader === 'vanilla' || loader === 'fabric' || loader === 'quilt') {
-          javaVal.textContent = '不需要（这个加载器免安装 Java）';
-          javaVal.classList.remove('is-bad');
-          return;
-        }
-        if (!mcVal) {
-          javaVal.textContent = '先选版本';
-          return;
-        }
-        try {
-          needMajor = (await window.pulses.mc.javaNeed(mcVal)).major || 17;
-        } catch (_) { needMajor = 17; }
-
-        const list = await getJavaList();
-        // 刚好够用的最低版本优先：老 Forge 安装器在 Java 21 上会挂
-        const ok = list.filter(j => j.major >= needMajor).sort((a, b) => a.major - b.major)[0];
-        if (ok) {
-          javaPath = ok.path;
-          javaVal.textContent = `需要 ${needMajor} · 已找到 Java ${ok.major}`;
-          javaVal.classList.remove('is-bad');
-        } else if (list.length) {
-          javaVal.textContent = `需要 ${needMajor} · 本机只有 Java ${list[0].major}`;
-          javaVal.classList.add('is-bad');
-          javaBtn.classList.remove('is-hidden');
-          javaBtn.textContent = `安装 Java ${needMajor}`;
-        } else {
-          javaVal.textContent = `需要 ${needMajor} · 没找到 Java`;
-          javaVal.classList.add('is-bad');
-          javaBtn.classList.remove('is-hidden');
-          javaBtn.textContent = `安装 Java ${needMajor}`;
-        }
-      };
-
-      javaBtn.addEventListener('click', async () => {
-        javaBtn.disabled = true;
-        javaBtn.textContent = '下载中…';
-        javaVal.textContent = `正在安装 Java ${needMajor}（约 200 MB，请稍候）`;
-        javaVal.classList.remove('is-bad');
-        try {
-          const r = await window.pulses.mc.javaInstall(needMajor);
-          if (r && r.ok) {
+      let out = '';
+      try {
+        // 1. Java：缺就装，装完接着走
+        let javaPath = '';
+        if (loader === 'forge' || loader === 'neoforge') {
+          const list = await getJavaList();
+          const ok = list.filter(j => j.major >= needMajor).sort((a, b) => a.major - b.major)[0];
+          if (ok) {
+            javaPath = ok.path;
+          } else {
+            line.textContent = `正在安装 Java ${needMajor}，约 200 MB`;
+            const r = await window.pulses.mc.javaInstall(needMajor);
+            if (!r || !r.ok) throw new Error((r && r.error) || 'Java 安装失败');
             javaPath = r.java.path;
             if (javaList) javaList.push(r.java);
-            javaVal.textContent = `Java ${r.java.major} 已就绪`;
-            javaBtn.classList.add('is-hidden');
-            Log.ok(`已安装 Java ${r.java.major}：${r.java.path}`);
-          } else {
-            javaVal.textContent = '自动安装失败';
-            javaVal.classList.add('is-bad');
-            err.textContent = (r && r.error) || '未知错误';
+            Log.ok(`已安装 Java ${r.java.major}`);
           }
-        } catch (e) {
-          javaVal.textContent = '自动安装失败';
-          javaVal.classList.add('is-bad');
-          err.textContent = String(e);
-        }
-        javaBtn.disabled = false;
-      });
-
-      refreshJava();
-
-      // ── 开始 ──
-      start.addEventListener('click', async () => {
-        if (this.state.busy) return;
-        err.textContent = '';
-
-        const instance = sanitizeInstance(nameInp.value.trim() || instName);
-        if (!mcVal) { err.textContent = '请先选版本'; return; }
-        if ((loader === 'forge' || loader === 'neoforge') && !javaPath) {
-          err.textContent = `装 ${loaderLabel(loader, '')} 需要 Java ${needMajor}，请先安装`;
-          return;
         }
 
-        this.state.busy = true;
-        start.disabled = true;
-        start.textContent = '安装中…';
-        if (footBtn) footBtn.disabled = true;
-        prog.classList.remove('is-hidden');
+        // 2. 解压
+        line.textContent = '正在解压整合包';
+        out = st.zip.replace(/\.[^.]+$/, '') + '_pulses_extract';
+        try { await window.pulses.pack.cleanExtract(out); } catch (_) {}
+        const unzip = await window.pulses.files.unzip(st.zip, out);
+        if (!unzip || !unzip.ok) throw new Error((unzip && unzip.msg) || '解压失败');
 
+        let content = out;
+        try { content = await unwrapPackRoot(out); } catch (_) {}
+
+        // 3. 装
         window.pulses.mc.onProgress(d => {
           if (!d || !d.stage) return;
+          const stage = String(d.stage).replace(/[…\.\s]+$/, '');
           if (d.total > 0) {
-            const pct = (d.done / d.total) * 100;
-            fill.style.width = pct.toFixed(1) + '%';
-            const mb = (d.totalBytes || 0) / 1048576;
-            ptext.textContent = `${d.stage}  ${d.done}/${d.total}` +
-              (mb > 0 ? `  ·  ${((d.bytes || 0) / 1048576).toFixed(1)}/${mb.toFixed(1)} MB` : '');
+            fill.style.width = ((d.done / d.total) * 100).toFixed(1) + '%';
+            const pct = Math.round((d.done / d.total) * 100);
+            let t = `${stage} · ${pct}%`;
+            if (d.totalBytes > 0) t += ` · ${fmtSize(d.bytes)} / ${fmtSize(d.totalBytes)}`;
+            line.textContent = t;
           } else {
-            ptext.textContent = d.stage;
+            line.textContent = stage;
           }
         });
 
-        // 解压整合包 → 找内容目录
-        let out = '';
-        try {
-          ptext.textContent = '正在解压整合包…';
-          out = st.zip.replace(/\.[^.]+$/, '') + '_pulses_extract';
-          try { await window.pulses.pack.cleanExtract(out); } catch (_) {}
-          const unzip = await window.pulses.files.unzip(st.zip, out);
-          if (!unzip || !unzip.ok) {
-            throw new Error((unzip && unzip.msg) || '解压失败');
-          }
-        } catch (e) {
-          this.state.busy = false;
-          if (footBtn) footBtn.disabled = false;
-          ptext.textContent = '安装失败';
-          err.textContent = String(e && e.message ? e.message : e);
-          start.disabled = false;
-          start.textContent = '重试';
-          Log.error('解压失败：' + e);
-          return;
+        const res = await window.pulses.mc.install({
+          root: st.root,
+          mc: mcVal,
+          loader,
+          loaderVer,
+          instance,
+          mirror: true,
+          java: javaPath,
+          content: content || '',
+        });
+
+        if (!res || !res.ok) throw new Error((res && res.error) || '安装失败');
+
+        fill.style.width = '100%';
+        line.textContent = `完成 · 写入 ${res.moved} 个文件 · 模组 ${res.mods || 0} 个`;
+        go.textContent = '完成';
+        App.setStatus('整合包已装好：' + instance);
+        Log.ok(`安装完成：${instance}`);
+        Log.debug('位置：' + res.dir);
+        try { localStorage.setItem(MCRootKey, st.root); } catch (_) {}
+
+        if (!res.mods && (meta.format === 'curseforge' || meta.format === 'modrinth')) {
+          Log.warn('这个整合包里没有模组文件，模组列表会是空的');
         }
 
-        try {
-          // 交给 Rust 摊平：overrides/ 和 .minecraft/ 的内容会直接落到实例根，
-          // 根目录的 mods/ 也一并并进去。前端只负责剥掉多套的那一层。
-          let content = out;
-          try { content = await unwrapPackRoot(out); } catch (_) {}
-
-          const res = await window.pulses.mc.install({
-            root: st.root,
-            mc: mcVal,
-            loader,
-            loaderVer,
-            instance,
-            mirror: true,
-            java: javaPath,
-            content: content || '',
-          });
-
-          this.state.busy = false;
-          if (footBtn) footBtn.disabled = false;
-
-          if (res && res.ok) {
-            fill.style.width = '100%';
-            ptext.textContent = '安装完成 ✓';
-            start.textContent = '已完成';
-            App.setStatus('整合包已装好：' + instance);
-            Log.ok(`安装完成：${instance}（下载 ${res.files} 个文件，写入整合包 ${res.moved} 个，模组 ${res.mods || 0} 个）`);
-            Log.debug('位置：' + res.dir);
-            // 官方 CF 导出包只有 overrides，模组不在包里 —— 装完是空的，得说清楚
-            if (!res.mods && (meta.format === 'curseforge' || meta.format === 'modrinth')) {
-              Log.warn('这个整合包里没有模组文件，模组列表会是空的');
-              Log.warn('官方 CurseForge 导出包通常不含模组，需要用 PCL 导入补全');
-            }
-            try { localStorage.setItem(MCRootKey, st.root); } catch (_) {}
-            // 装完直接定位过去，玩家端可以接着打更新包
-            if (res.dir && window.Player) {
-              try { await Player.setModpack(res.dir); } catch (_) {}
-            }
-            setTimeout(() => {
-              this._cleanup(out);
-              done(res);
-            }, 1400);
-          } else {
-            const msg = (res && res.error) || '安装失败';
-            ptext.textContent = '安装失败';
-            err.textContent = msg;
-            start.disabled = false;
-            start.textContent = '重试';
-            Log.error('安装失败：' + msg);
-            this._cleanup(out);
-          }
-        } catch (e) {
-          this.state.busy = false;
-          if (footBtn) footBtn.disabled = false;
-          err.textContent = String(e);
-          ptext.textContent = '安装失败';
-          start.disabled = false;
-          start.textContent = '重试';
-          Log.error('安装异常：' + e);
-          this._cleanup(out);
+        if (res.dir && window.Player) {
+          try { await Player.setModpack(res.dir); } catch (_) {}
         }
-      });
-    });
+
+        await this._cleanup(out);
+        setTimeout(() => this.hide(), 1600);
+      } catch (e) {
+        const msg = String(e && e.message ? e.message : e);
+        hint.textContent = msg;
+        hint.classList.add('is-bad');
+        line.textContent = '';
+        go.textContent = '重试';
+        Log.error('安装失败：' + msg);
+        await this._cleanup(out);
+        setBusy(false);
+      }
+    };
+
+    back.onclick = () => {
+      if (this.state.busy) return;
+      this.hide();
+    };
   },
 
-  // 解压目录用完就删
+  hide() {
+    const view = document.getElementById('install-view');
+    const pv = document.getElementById('player-view');
+    if (view) view.classList.add('is-hidden');
+    if (pv) pv.classList.remove('is-installing');
+    this.state.busy = false;
+  },
+
   async _cleanup(out) {
     if (!out) return;
     try { await window.pulses.pack.cleanExtract(out); } catch (_) {}
@@ -378,35 +294,6 @@ const Installer = {
 };
 
 // ── 小工具 ──
-
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = text;
-  return e;
-}
-
-function infoRow(label, value) {
-  const row = el('div', 'pref-row');
-  const main = el('div', 'pref-main');
-  main.appendChild(el('div', 'pref-label', label));
-  row.appendChild(main);
-  const v = el('div', 'pref-value', value);
-  v.title = value;
-  row.appendChild(v);
-  return row;
-}
-
-function fieldRow(label, control, hint) {
-  const row = el('div', 'pref-row pref-row-field');
-  const main = el('div', 'pref-main');
-  main.appendChild(el('div', 'pref-label', label));
-  if (hint) main.appendChild(el('div', 'pref-hint', hint));
-  row.appendChild(main);
-  control.classList.add('ins-control');
-  row.appendChild(control);
-  return row;
-}
 
 function loaderLabel(loader, ver) {
   const names = {
@@ -428,7 +315,14 @@ function formatLabel(fmt) {
   return names[fmt] || '整合包';
 }
 
-// 从 zip 文件名里取个能当实例名的名字
+function fmtSize(n) {
+  const b = Number(n) || 0;
+  if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB';
+  if (b >= 1048576) return (b / 1048576).toFixed(0) + ' MB';
+  return (b / 1024).toFixed(0) + ' KB';
+}
+
+// 从 zip 文件名里取个能当版本名的名字
 function zipName(p) {
   let n = baseName(String(p || ''));
   n = n.replace(/\.(zip|eapack)$/i, '');
@@ -436,14 +330,14 @@ function zipName(p) {
   return n;
 }
 
-// 实例名：去掉 Windows 不允许的字符，兜底用 modpack
+// 版本名：去掉 Windows 不允许的字符，兜底用 modpack
 function sanitizeInstance(s) {
   let t = String(s || '').replace(/[\\/:*?"<>|]/g, '_').replace(/[\x00-\x1f]/g, '');
   t = t.trim().replace(/\.+$/, '');
   return t || 'modpack';
 }
 
-// 猜游戏目录：记住的 → 从已定位整合包推（.../versions/<名字> → ...）
+// 猜游戏目录：记住的 → 从已定位整合包推
 function guessGameDir() {
   try {
     const saved = localStorage.getItem(MCRootKey);
@@ -462,3 +356,4 @@ window.loaderLabel = loaderLabel;
 window.zipName = zipName;
 window.guessGameDir = guessGameDir;
 window.formatLabel = formatLabel;
+window.fmtSize = fmtSize;

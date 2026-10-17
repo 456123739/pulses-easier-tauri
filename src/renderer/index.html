@@ -118,6 +118,47 @@
 
       <!-- 玩家端 -->
       <section id="player-view" class="view is-active">
+
+        <!-- 安装整合包：拖入整合包后顶掉下面三步，装完再退回来 -->
+        <div class="install is-hidden" id="install-view">
+          <article class="card install-card">
+            <div class="install-kicker" id="ins-kicker">整合包</div>
+            <h2 class="install-name" id="ins-name">—</h2>
+            <div class="install-meta" id="ins-meta"></div>
+
+            <!-- 认不出整合包信息时才出现 -->
+            <div class="install-detect is-hidden" id="ins-detect">
+              <select class="install-input" id="ins-mc"></select>
+              <select class="install-input" id="ins-loader">
+                <option value="forge">Forge</option>
+                <option value="neoforge">NeoForge</option>
+                <option value="fabric">Fabric</option>
+                <option value="quilt">Quilt</option>
+                <option value="vanilla">原版</option>
+              </select>
+              <input class="install-input" id="ins-loaderver"
+                     placeholder="加载器版本，留空取最新" spellcheck="false" autocomplete="off">
+            </div>
+
+            <div class="install-fields">
+              <label class="install-field">
+                <span class="install-label">版本名</span>
+                <input class="install-input" id="ins-instance" spellcheck="false" autocomplete="off">
+              </label>
+              <div class="install-hint" id="ins-hint"></div>
+            </div>
+
+            <div class="install-bar is-hidden" id="ins-bar">
+              <div class="install-track"><i id="ins-fill"></i></div>
+              <div class="install-line" id="ins-line"></div>
+            </div>
+
+            <div class="install-actions">
+              <button class="cta" id="ins-go">开始安装</button>
+              <button class="link-btn is-hidden" id="ins-back">返回</button>
+            </div>
+          </article>
+        </div>
         <div class="col col-left">
 
           <article class="card step">
