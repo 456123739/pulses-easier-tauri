@@ -23,6 +23,7 @@ const Marquee = {
 const Recent = {
   _items: [],
   _targets: [],       // [{el, onPick, maxItems}]
+  _pairs: [],         // 上次渲染出的 [裁剪容器, 内层路径]，供 refreshMarquee 用
 
   async load() {
     try { this._items = (await window.pulses.recent.load()) || []; }
@@ -102,6 +103,7 @@ const Recent = {
 
   // 路径比容器宽就来回滚动；不需要滚动就保持静止
   _startMarquee(pairs) {
+    this._pairs = pairs;                    // 记下来，界面显示后要重新量
     requestAnimationFrame(() => {
       for (const pair of pairs) {
         const wrap = pair[0];
@@ -120,6 +122,12 @@ const Recent = {
         }
       }
     });
+  },
+
+  // 启动时 #app 还是 display:none，元素宽高都是 0，量不出溢出。
+  // 主界面显示出来之后必须重新量一次，否则要等用户点一下才滚。
+  refreshMarquee() {
+    if (this._pairs && this._pairs.length) this._startMarquee(this._pairs);
   },
 };
 

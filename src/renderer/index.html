@@ -8,10 +8,12 @@
   <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
-  <!-- 启动页 -->
+  <!-- 启动页：中间一张小卡片显示加载，加载完再出主界面 -->
   <div id="splash" class="splash">
-    <img class="splash-logo" src="assets/logo.png" alt="Pulses Easier">
-    <div class="splash-track"><i id="splash-fill"></i></div>
+    <div class="splash-card">
+      <img class="splash-logo" src="assets/logo.png" alt="Pulses Easier">
+      <div class="splash-track"><i id="splash-fill"></i></div>
+    </div>
   </div>
 
   <!-- ══ 自定义标题栏（常驻，启动页也盖不住它）══ -->
@@ -88,8 +90,8 @@
             <button class="row" id="btn-clean-cache">
               <span class="row-label">清理缓存</span><span class="chev">›</span>
             </button>
-            <button class="row" id="btn-prefs">
-              <span class="row-label">设置</span><span class="chev">›</span>
+            <button class="row" id="nav-db">
+              <span class="row-label">数据库位置</span><span class="chev">›</span>
             </button>
           </div>
         </section>

@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.8.9';
+const BUILD_STAMP = 'build 0.9.0';
 
 const App = {
   identity: 'player',
@@ -84,209 +84,33 @@ const App = {
   },
 
   // ── 设置（iOS 分组行）──
-  async openPrefs() {
-    this.markNav('btn-prefs');
+  // ── 数据库位置（原来在「设置」弹窗里，现在直接放侧边栏）──
+  async changeDbLocation() {
+    this.markNav('nav-db');
 
     let dbPath = null;
     try { dbPath = await window.pulses.db.getPath(); } catch (_) {}
 
-    await Overlay.panel('设置', (body) => {
-      const mkRow = (label, right) => {
-        const row = document.createElement('div');
-        row.className = 'pref-row';
-        const main = document.createElement('div');
-        main.className = 'pref-main';
-        const l = document.createElement('div');
-        l.className = 'pref-label';
-        l.textContent = label;
-        main.appendChild(l);
-        row.appendChild(main);
-        if (right) row.appendChild(right);
-        return row;
-      };
+    const picked = await window.pulses.dialog.openFolder('选择数据库位置');
+    if (!picked || picked === dbPath) return;
 
-      const mkSwitch = (on, onChange) => {
-        const sw = document.createElement('button');
-        sw.className = 'pref-switch' + (on ? ' is-on' : '');
-        sw.addEventListener('click', () => {
-          const next = !sw.classList.contains('is-on');
-          sw.classList.toggle('is-on', next);
-          onChange(next);
-        });
-        return sw;
-      };
+    let valid = false;
+    try { valid = await window.pulses.db.isValid(picked); } catch (_) {}
 
-      // 1. 数据库位置
-      const val = document.createElement('div');
-      val.className = 'pref-value';
-      val.textContent = dbPath || '未设置';
-      val.title = dbPath || '';
-      const btn = document.createElement('button');
-      btn.className = 'pref-btn';
-      btn.textContent = '更改';
-      btn.addEventListener('click', async () => {
-        const picked = await window.pulses.dialog.openFolder('选择数据库位置');
-        if (!picked) return;
-        if (dbPath) {
-          const valid = await window.pulses.db.isValid(picked);
-          const ok = await Overlay.confirm('更换数据库位置',
-            `${picked}\n\n${valid ? '切换到该数据库。' : '在该位置新建数据库。'}\n当前数据库不会被删除。`,
-            { confirmText: valid ? '切换' : '新建并切换' });
-          if (!ok) return;
-        }
-        const created = await window.pulses.db.create(picked);
-        if (!created) {
-          Log.error('更换数据库位置失败：' + picked);
-          await Overlay.alert('更换失败', '无法使用该位置。', { level: 'error' });
-          return;
-        }
-        dbPath = picked;
-        val.textContent = dbPath;
-        val.title = dbPath;
-        Log.ok('数据库位置已更新：' + dbPath);
-        App.setStatus('数据库：' + dbPath);
-        await App.loadWhitelist();
-      });
+    const ok = await Overlay.confirm('更换数据库位置',
+      `${picked}\n\n${valid ? '切换到该数据库。' : '在该位置新建数据库。'}\n当前数据库不会被删除。`,
+      { confirmText: valid ? '切换' : '新建并切换' });
+    if (!ok) return;
 
-      const r1 = document.createElement('div');
-      r1.className = 'pref-row';
-      const m1 = document.createElement('div');
-      m1.className = 'pref-main';
-      const l1 = document.createElement('div');
-      l1.className = 'pref-label';
-      l1.textContent = '数据库位置';
-      m1.appendChild(l1);
-      r1.appendChild(m1);
-      r1.appendChild(val);
-      r1.appendChild(btn);
-      body.appendChild(r1);
-
-      // 2. 主题色（小方框，点开是调色盘）
-      const sw = document.createElement('button');
-      sw.className = 'pref-swatch';
-      sw.style.background = Theme.current();
-      sw.title = '主题色';
-      sw.addEventListener('click', () => App.openThemePicker());
-      body.appendChild(mkRow('主题色', sw));
-
-      // 3. 界面动画
-      body.appendChild(mkRow('界面动画', mkSwitch(Motion.enabled, (on) => {
-        Motion.setEnabled(on);
-        App.saveUiPref('animations', on);
-      })));
-
-      // 3. 路径自动滚动
-      body.appendChild(mkRow('路径自动滚动', mkSwitch(Marquee.enabled(), (on) => {
-        Marquee.set(on);
-        App.saveUiPref('path_marquee', on);
-      })));
-
-      // 4. 完整日志
-      body.appendChild(mkRow('完整日志', mkSwitch(Log.isVerbose(), (on) => {
-        Log.setVerbose(on);
-        App.saveUiPref('verbose_log', on);
-      })));
-
-      // 5. 版本
-      const ver = document.createElement('div');
-      ver.className = 'pref-value';
-      ver.textContent = document.getElementById('status-version').textContent || '—';
-      body.appendChild(mkRow('版本', ver));
-    });
-  },
-
-  // ── 调色盘（覆盖层）──
-  async openThemePicker() {
-    const start = Theme.current();
-
-    await Overlay.panel('主题色', (body) => {
-      // 预设色点
-      const grid = document.createElement('div');
-      grid.className = 'picker-grid';
-      const dots = [];
-      for (const [name, hex] of Theme.PRESETS) {
-        const dot = document.createElement('button');
-        dot.className = 'picker-dot';
-        dot.dataset.hex = hex.toLowerCase();
-        dot.style.background = hex;
-        dot.title = `${name} ${hex}`;
-        dot.addEventListener('click', () => setColor(hex));
-        grid.appendChild(dot);
-        dots.push(dot);
-      }
-      body.appendChild(grid);
-
-      // 原生调色盘
-      const native = document.createElement('input');
-      native.type = 'color';
-      native.className = 'picker-native';
-      native.value = start;
-      native.addEventListener('input', () => setColor(native.value));
-      body.appendChild(native);
-
-      // 颜色代码输入（HEX / RGB / HSL 都认）
-      const input = document.createElement('input');
-      input.className = 'picker-input';
-      input.placeholder = '#6E8FA3  ·  rgb(110,143,163)  ·  hsl(203,18%,54%)';
-      input.value = start;
-      const commit = () => {
-        if (Theme.apply(input.value)) {
-          input.style.color = '';
-          refresh();
-          App.saveUiPref('accent', Theme.current());
-          swatchSync();
-        } else {
-          input.style.color = 'var(--red)';
-        }
-      };
-      input.addEventListener('change', commit);
-      input.addEventListener('keydown', e => { if (e.key === 'Enter') commit(); });
-      body.appendChild(input);
-
-      // 预览 + 三种格式回显
-      const preview = document.createElement('div');
-      preview.className = 'picker-preview';
-      body.appendChild(preview);
-
-      const formats = document.createElement('div');
-      formats.className = 'picker-formats';
-      body.appendChild(formats);
-
-      const swatchSync = () => {
-        const el = document.querySelector('.pref-swatch');
-        if (el) el.style.background = Theme.current();
-      };
-
-      const refresh = () => {
-        const rgb = Theme.currentRgb();
-        const hex = Theme.toHex(rgb);
-        preview.style.background = hex;
-        formats.textContent =
-          `${hex}\n${Theme.toRgbString(rgb)}\n${Theme.toHslString(rgb)}`;
-        native.value = hex;
-        if (document.activeElement !== input) input.value = hex;
-        for (const d of dots) d.classList.toggle('is-on', d.dataset.hex === hex);
-      };
-
-      function setColor(v) {
-        if (!Theme.apply(v)) return;
-        refresh();
-        App.saveUiPref('accent', Theme.current());
-        swatchSync();
-      }
-
-      refresh();
-    });
-  },
-
-  async saveUiPref(key, value) {
-    try {
-      const cfg = await window.pulses.db.loadConfig();
-      if (!cfg) return;
-      cfg.ui = cfg.ui || {};
-      cfg.ui[key] = value;
-      await window.pulses.db.saveConfig(cfg);
-    } catch (_) { /* 静默 */ }
+    const created = await window.pulses.db.create(picked);
+    if (!created) {
+      Log.error('更换数据库位置失败：' + picked);
+      await Overlay.alert('更换失败', '无法使用该位置。', { level: 'error' });
+      return;
+    }
+    Log.ok('数据库位置已更新：' + picked);
+    App.setStatus('数据库：' + picked);
+    await App.loadWhitelist();
   },
 
   async loadUiPrefs() {
@@ -296,16 +120,13 @@ const App = {
       ui = (cfg && cfg.ui) || {};
     } catch (_) { /* 静默 */ }
 
-    // 主题色（默认青灰）
-    Theme.apply(ui.accent || Theme.DEFAULT);
+    // 主题固定为默认青灰，不再允许自定义
+    Theme.apply(Theme.DEFAULT);
 
-    const anim = ui.animations !== false;          // 默认开
-    Motion.setEnabled(anim);
-
-    const marquee = ui.path_marquee !== false;     // 默认开
-    Marquee.set(marquee);
-
-    Log.setVerbose(!!ui.verbose_log);              // 默认关
+    // 下面三项全部默认开启；设置面板已移除，不再提供开关
+    Motion.setEnabled(ui.animations !== false);
+    Marquee.set(ui.path_marquee !== false);
+    Log.setVerbose(ui.verbose_log !== false);
   },
 
   // ── 其它侧边栏动作 ──
@@ -556,6 +377,9 @@ async function boot() {
       document.querySelectorAll('.group').forEach((g, i) => {
         g.style.animation = `groupIn 420ms var(--ease-out) ${120 + i * 60}ms both`;
       });
+      // 界面显示出来之后再量一次路径宽度 —— 隐藏时宽高都是 0，量不出溢出，
+      // 不补这一下就要等用户点一下才开始滚。
+      try { if (window.Recent) Recent.refreshMarquee(); } catch (_) { /* 忽略 */ }
     } catch (_) { /* 忽略 */ }
 
     try {
@@ -605,7 +429,6 @@ async function boot() {
       const el = document.getElementById(id);
       if (el) el.addEventListener('click', fn);
     };
-    on('btn-prefs',        () => App.openPrefs());
     on('btn-clean-cache',  () => App.cleanCache());
     on('btn-recent-clear', async () => {
       await Recent.clear();
@@ -621,6 +444,7 @@ async function boot() {
     nav('nav-pickpack', () => Player.pickPack());
     nav('nav-newpack',  () => Developer.pickNew());
     nav('nav-oldpack',  () => Developer.pickOld());
+    nav('nav-db',       () => App.changeDbLocation());
   });
 
   await step('最近打开', async () => {

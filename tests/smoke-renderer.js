@@ -282,12 +282,12 @@ check('App 侧栏模式切换', () => {
   W.App.markNav('btn-prefs');
 });
 
-check('App 设置面板构建', () => {
-  // 直接调 build 回调，不经过 Overlay（避免 promise 悬挂）
-  let built = false;
-  W.App.openPrefs().catch(() => {});
-  built = true;
-  if (!built) throw new Error('openPrefs 应可调用');
+// 设置不再是弹窗：面板和调色盘都已移除，数据库位置改由侧栏入口提供。
+// 这条用例守住「别又被加回来」。
+check('设置面板已移除、数据库位置在侧栏', () => {
+  if (typeof W.App.openPrefs === 'function') throw new Error('设置弹窗应已移除');
+  if (typeof W.App.openThemePicker === 'function') throw new Error('调色盘应已移除');
+  if (typeof W.App.changeDbLocation !== 'function') throw new Error('changeDbLocation 缺失');
 });
 
 // ── DOM 引用完整性 ──

@@ -57,13 +57,26 @@ img { display: block; max-width: 100%; }
 
 .splash {
   position: fixed; top: 36px; left: 0; right: 0; bottom: 0; z-index: 9999;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 30px;
+  display: flex; align-items: center; justify-content: center;
   background: var(--bg-system);
   transition: opacity var(--d-slow) var(--spring-soft);
 }
 .splash.is-out { opacity: 0; pointer-events: none; }
+
+/* 中间那张小卡片：加载期间只有它，加载完才出主界面 */
+.splash-card {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 26px;
+  width: min(400px, 70vw);
+  padding: 34px 34px 32px;
+  border-radius: var(--r-group);
+  background: var(--bg-grouped-2);
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.66),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
 .splash-logo {
   width: var(--splash-logo-w); height: auto;
   object-fit: contain;
@@ -102,9 +115,11 @@ img { display: block; max-width: 100%; }
   background: var(--bg-system);
   animation: appIn var(--d-enter) var(--spring-soft) both;
 }
+/* 只做透明度：整窗 scale 会让 WebView2 每帧重绘整棵树，
+   动画一开就「卡一下」，正是玩家反馈的那个顿挫。 */
 @keyframes appIn {
-  from { opacity: 0; transform: scale(0.985); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* ════════════════ 侧边栏 ════════════════ */
@@ -150,7 +165,8 @@ img { display: block; max-width: 100%; }
 
 .brand {
   flex: 0 0 auto;
-  padding: 22px 20px 18px;
+  /* 上 10（原来 22，logo 太靠下）、下 24（给第一张卡留呼吸） */
+  padding: 10px 20px 24px;
 }
 .brand img {
   width: 100%; height: auto; object-fit: contain;
@@ -369,8 +385,11 @@ img { display: block; max-width: 100%; }
   grid-column: 2; grid-row: 1;
   position: relative; min-width: 0; min-height: 0;
   overflow: hidden;
-  padding-top: 36px;               /* 让出浮层标题栏 */
   background: var(--bg-system);
+  /* 注意：这里不能加 padding-top 让出标题栏。
+     .view 是 position:absolute; inset:0，它的包含块是**内边距盒**，
+     padding 推不动它 —— 加了反而会把卡片顶到标题栏底下。
+     让出标题栏的活儿交给 .view 自己的 padding。 */
 }
 
 /* 两个视图常驻，切换时由 WAAPI 驱动滑动（方向按模式定）。
@@ -379,7 +398,8 @@ img { display: block; max-width: 100%; }
 .view {
   position: absolute; inset: 0;
   display: flex; gap: 16px;
-  padding: 18px;
+  /* 顶部 36px 让出浮层标题栏 + 原本的 18px 留白 */
+  padding: 54px 18px 18px;
   min-width: 0; min-height: 0;
   opacity: 0;
   pointer-events: none;
