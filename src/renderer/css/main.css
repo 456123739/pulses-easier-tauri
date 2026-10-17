@@ -241,6 +241,13 @@ img { display: block; max-width: 100%; }
   flex: 1 1 auto; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* 「更改数据库位置」这一行：标签保持完整，让路径去挤 */
+#nav-db .row-label {
+  flex: 0 0 auto;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .chev {
   flex: 0 0 auto;
   font-size: 17px; line-height: 1;
