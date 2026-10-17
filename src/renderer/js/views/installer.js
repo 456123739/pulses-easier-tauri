@@ -83,8 +83,10 @@ const Installer = {
     kicker.textContent = formatLabel(meta.format);
     name.textContent = meta.name || zipName(st.zip);
     metaEl.classList.remove('is-hidden');
+    // 整合包没写加载器版本时，Rust 那边会自己查推荐版本
+    const needAuto = (meta.loader === 'forge' || meta.loader === 'neoforge') && !meta.loaderVer;
     metaEl.textContent = known
-      ? `${loaderLabel(meta.loader, meta.loaderVer)} · Minecraft ${meta.mc} · ${st.root}`
+      ? `${loaderLabel(meta.loader, meta.loaderVer)}${needAuto ? ' 自动选版本' : ''} · Minecraft ${meta.mc} · ${st.root}`
       : st.root;
     input.value = instName;
 

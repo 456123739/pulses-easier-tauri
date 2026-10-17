@@ -422,11 +422,24 @@ fn http_get_text(url: &str, timeout_sec: u64) -> Result<String, String> {
         .user_agent(UA)
         .build()
         .map_err(|e| format!("HTTP 初始化失败：{e}"))?;
-    let r = c.get(url).send().map_err(|e| format!("连不上 {url}：{e}"))?;
-    if !r.status().is_success() {
-        return Err(format!("{url} 返回 {}", r.status().as_u16()));
+
+    // 镜像站偶发返回空响应，重试一次能挡掉大部分毛刺
+    let mut last = String::new();
+    for attempt in 0..2 {
+        if attempt > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+        }
+        match c.get(url).send() {
+            Ok(r) if r.status().is_success() => match r.text() {
+                Ok(t) if !t.trim().is_empty() => return Ok(t),
+                Ok(_) => last = format!("{url} 返回了空内容"),
+                Err(e) => last = format!("{url} 读取失败：{e}"),
+            },
+            Ok(r) => last = format!("{url} 返回 {}", r.status().as_u16()),
+            Err(e) => last = format!("{url} 连不上：{e}"),
+        }
     }
-    r.text().map_err(|e| format!("读响应失败：{e}"))
+    Err(last)
 }
 
 /// 把 HTML 里所有 href 的路径抠出来（去掉首尾斜杠）
@@ -563,16 +576,101 @@ pub fn zulu_url(feature: u32) -> Option<String> {
     plain.or(fx)
 }
 
+const BMCLAPI: &str = "https://bmclapi2.bangbang93.com";
+
+/// BMCLAPI 的 java 列表。
+///
+/// 返回的是 [{"title":"Windows x64","file":"jre_x64.exe"}, ...]，
+/// 文件从 `https://bmclapi.bangbang93.com/java/<file>` 下。
+/// 只挑压缩包，exe/dmg/msi 是安装器，没法静默展开。
+/// 这个接口按地区限制，国内能通，国外会 403，所以只当第一候选。
+pub fn bmclapi_url() -> Option<String> {
+    let txt = http_get_text(&format!("{BMCLAPI}/java/list"), 15).ok()?;
+    let arr: Value = serde_json::from_str(&txt).ok()?;
+    let list = arr.as_array()?;
+
+    let os_hint = if cfg!(windows) {
+        "win"
+    } else if cfg!(target_os = "macos") {
+        "mac"
+    } else {
+        "linux"
+    };
+    let arch_hint = if std::env::consts::ARCH == "aarch64" {
+        "arm"
+    } else {
+        "64"
+    };
+
+    for it in list {
+        let title = it.get("title").and_then(|x| x.as_str()).unwrap_or("");
+        let file = it.get("file").and_then(|x| x.as_str()).unwrap_or("");
+        if file.is_empty() {
+            continue;
+        }
+        let low = format!("{} {}", title, file).to_ascii_lowercase();
+        if !(low.ends_with(".zip") || low.ends_with(".tar.gz")) {
+            continue;
+        }
+        let os_ok = if os_hint == "win" {
+            low.contains("win")
+        } else if os_hint == "mac" {
+            low.contains("mac") || low.contains("osx")
+        } else {
+            low.contains("linux")
+        };
+        if !os_ok || !low.contains(arch_hint) {
+            continue;
+        }
+        return Some(format!("https://bmclapi.bangbang93.com/java/{file}"));
+    }
+    None
+}
+
+/// 华为云不列目录也能拼出来的直链。
+///
+/// 目录页偶尔抽风返回空，光靠解析会白跑一趟。GA 目录就那么几个，
+/// 直接拼出来让下载器去试，404 会立刻失败，代价很小。
+fn huawei_direct(feature: u32) -> Vec<String> {
+    let ext = if cfg!(windows) { "zip" } else { "tar.gz" };
+    let plat = huawei_platform();
+    let mut v = Vec::new();
+    for ver in [
+        format!("{feature}.0.2"),
+        format!("{feature}.0.1"),
+        format!("{feature}.0.3"),
+        format!("{feature}"),
+    ] {
+        v.push(format!(
+            "{HUAWEI}{ver}/openjdk-{ver}_{plat}_bin.{ext}"
+        ));
+    }
+    v
+}
+
 /// 所有能拿到安装包的直链，按优先级排好。
 pub fn sources(feature: u32) -> Vec<String> {
-    let mut v = Vec::new();
-    if let Some(u) = huawei_url(feature) {
-        v.push(u);
-    }
-    if let Some(u) = zulu_url(feature) {
-        if !v.contains(&u) {
+    let mut v: Vec<String> = Vec::new();
+    let mut push = |u: String| {
+        if !u.is_empty() && !v.contains(&u) {
             v.push(u);
         }
+    };
+
+    // BMCLAPI 只缓存最新的 jre，不区分主版本，所以只在 17 及以上用它
+    if feature >= 17 {
+        if let Some(u) = bmclapi_url() {
+            push(u);
+        }
+    }
+    if let Some(u) = huawei_url(feature) {
+        push(u);
+    }
+    for u in huawei_direct(feature) {
+        push(u);
+    }
+    if let Some(u) = zulu_url(feature) {
+        push(u);
     }
     v
 }
@@ -710,49 +808,58 @@ pub fn install_into(feature: u32, root: &Path) -> Result<Java, String> {
     let urls = sources(feature);
     if urls.is_empty() {
         return Err(format!(
-            "找不到 Java {feature} 的下载源（网络不通？可以手动装一份再重试）"
+            "找不到 Java {feature} 的下载源，网络不通的话可以手动装一份再重试"
         ));
     }
 
-    // 文件名取主源的 basename；RideX 按这个名字存盘，换源也不影响
-    let name = urls[0]
-        .rsplit('/')
-        .next()
-        .unwrap_or("jdk.zip")
-        .to_string();
+    let mut last = String::new();
+    for url in urls {
+        let name = url.rsplit('/').next().unwrap_or("jdk.zip").to_string();
+        let task = crate::ridex::DownloadTask {
+            name: name.clone(),
+            urls: vec![url.clone()],
+            target_dir: root.clone(),
+            size: 0,
+            hash: String::new(),
+        };
+        let batch = crate::ridex::run_batch(
+            vec![task],
+            &crate::ridex::Options::default(),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            None,
+            None,
+        );
+        let got = match batch.results.into_iter().next() {
+            Some(r) if r.ok => r,
+            Some(r) => {
+                last = format!("{url} 下载失败：{}", r.error);
+                continue;
+            }
+            None => {
+                last = format!("{url} 没有返回结果");
+                continue;
+            }
+        };
 
-    let task = crate::ridex::DownloadTask {
-        name: name.clone(),
-        urls: urls.clone(),
-        target_dir: root.clone(),
-        size: 0,
-        hash: String::new(),
-    };
-    let opts = crate::ridex::Options::default();
-    let batch = crate::ridex::run_batch(
-        vec![task],
-        &opts,
-        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        None,
-        None,
-    );
-    let got = batch
-        .results
-        .into_iter()
-        .next()
-        .ok_or_else(|| "下载没有返回结果".to_string())?;
-    if !got.ok {
-        return Err(format!("下载 Java 失败：{}", got.error));
+        let pkg = PathBuf::from(&got.path);
+        let dest = root.join(format!("jdk-{feature}"));
+        let _ = std::fs::remove_dir_all(&dest);
+        match unpack(&pkg, &dest) {
+            Ok(home) => {
+                let _ = std::fs::remove_file(&pkg);
+                if let Some(j) = make(home.join("bin").join(exe_name()), "installed") {
+                    return Ok(j);
+                }
+                last = format!("{url} 解压后跑不起来 java");
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&pkg);
+                last = format!("{url} 解压失败：{e}");
+            }
+        }
     }
 
-    let pkg = PathBuf::from(&got.path);
-    let dest = root.join(format!("jdk-{feature}"));
-    let _ = std::fs::remove_dir_all(&dest);
-    let home = unpack(&pkg, &dest)?;
-    let _ = std::fs::remove_file(&pkg);
-
-    make(home.join("bin").join(exe_name()), "installed")
-        .ok_or_else(|| "装完了但跑不起来 java".to_string())
+    Err(format!("Java {feature} 装不上：{last}"))
 }
 
 // ═══════════════════════════════════════════════════════════════

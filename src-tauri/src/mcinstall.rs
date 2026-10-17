@@ -563,6 +563,49 @@ pub fn maven_path(coords: &str) -> Option<String> {
 // 加载器：Forge / NeoForge（要 Java）
 // ═══════════════════════════════════════════════════════════════
 
+/// 整合包没写加载器版本时，去查推荐版本。
+///
+/// 之前这里直接拿空版本拼文件名，拼出 `forge-1.20.1-installer.jar`，
+/// 两个源都 404，玩家看到的就是「安装失败：HTTP 404」。
+pub fn resolve_forge_version(mc: &str) -> Result<String, String> {
+    let txt = get_text(&[
+        "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json".to_string(),
+    ])?;
+    let v: Value =
+        serde_json::from_str(&txt).map_err(|e| format!("Forge 版本列表解析失败：{e}"))?;
+    let promos = v
+        .get("promos")
+        .and_then(|x| x.as_object())
+        .ok_or_else(|| "Forge 版本列表格式不对".to_string())?;
+    for key in [format!("{mc}-recommended"), format!("{mc}-latest")] {
+        if let Some(s) = promos.get(&key).and_then(|x| x.as_str()) {
+            return Ok(s.to_string());
+        }
+    }
+    Err(format!("没有找到 Minecraft {mc} 对应的 Forge 版本"))
+}
+
+/// NeoForge 同理。NeoForge 的版本号和 MC 版本不是一一对应，得问它自己的列表。
+pub fn resolve_neoforge_version(mc: &str) -> Result<String, String> {
+    let txt = get_text(&[
+        format!("{BMCL}/neoforge/list/{mc}"),
+        format!("https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge"),
+    ])?;
+    let arr: Value =
+        serde_json::from_str(&txt).map_err(|e| format!("NeoForge 版本列表解析失败：{e}"))?;
+    let list = arr.as_array().ok_or_else(|| "NeoForge 版本列表格式不对".to_string())?;
+    // 列表按时间排，最后一个是新的
+    for it in list.iter().rev() {
+        if let Some(raw) = it.get("rawVersion").and_then(|x| x.as_str()) {
+            let ver = raw.trim_start_matches("neoforge-");
+            if !ver.is_empty() {
+                return Ok(ver.to_string());
+            }
+        }
+    }
+    Err(format!("没有找到 Minecraft {mc} 对应的 NeoForge 版本"))
+}
+
 /// Forge 的 installer 直链。版本号形如 `1.20.1-47.2.0`。
 pub fn forge_installer_url(mc: &str, ver: &str, mirror: bool) -> (String, String) {
     let full = if ver.starts_with(&format!("{mc}-")) {
@@ -1025,10 +1068,29 @@ pub fn install(
 
         "forge" | "neoforge" => {
             say("准备安装器…");
+            // 整合包没写加载器版本就自己查一个，别拿空版本去拼文件名
+            let mut lver = t.loader_ver.clone();
+            if lver.is_empty() {
+                let r = if t.loader == "neoforge" {
+                    resolve_neoforge_version(&t.mc)
+                } else {
+                    resolve_forge_version(&t.mc)
+                };
+                match r {
+                    Ok(v) => {
+                        lver = v;
+                        if let Some(p) = &prog {
+                            p(&format!("{} 版本 {}", t.loader, lver), 0, 0, 0, 0);
+                        }
+                    }
+                    Err(e) => return fail(e),
+                }
+            }
+
             let (m_url, o_url) = if t.loader == "neoforge" {
-                neoforge_installer_url(&t.loader_ver, t.mirror)
+                neoforge_installer_url(&lver, t.mirror)
             } else {
-                forge_installer_url(&t.mc, &t.loader_ver, t.mirror)
+                forge_installer_url(&t.mc, &lver, t.mirror)
             };
 
             let cache = crate::db::app_dir().join("cache");
@@ -1058,11 +1120,11 @@ pub fn install(
 
             // 安装器自己会建 versions/<完整id>/，找出来
             let want = if t.loader == "neoforge" {
-                format!("neoforge-{}", t.loader_ver)
-            } else if t.loader_ver.starts_with(&format!("{}-", t.mc)) {
-                t.loader_ver.clone()
+                format!("neoforge-{lver}")
+            } else if lver.starts_with(&format!("{}-", t.mc)) {
+                lver.clone()
             } else {
-                format!("{}-{}", t.mc, t.loader_ver)
+                format!("{}-{lver}", t.mc)
             };
             let mut found = String::new();
             if root.join("versions").join(&want).join(format!("{want}.json")).exists() {
