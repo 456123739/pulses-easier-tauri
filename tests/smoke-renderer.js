@@ -388,6 +388,27 @@ checkAsync('更新包顶层文件夹剥离', async () => {
   }
 });
 
+// ── 重复定位同一文件夹 ──
+// 在「最近」里连点同一个条目会重复读信息、重复写日志、重复渲染列表，
+// 表现就是日志刷屏 + 动画不断重载。setModpack 里加了同路径守卫。
+checkAsync('重复定位同一文件夹不做反应', async () => {
+  const P = W.Player;
+  const same = 'D:\\packs\\NRG';
+  P.state.modpackPath = same;
+
+  let logs = 0;
+  const orig = W.Log.ok;
+  W.Log.ok = function () { logs++; return orig && orig.apply(this, arguments); };
+  try {
+    await P.setModpack(same);
+  } finally {
+    W.Log.ok = orig;
+  }
+
+  if (logs !== 0) throw new Error('重复定位仍写了 ' + logs + ' 条日志');
+  if (P.state.modpackPath !== same) throw new Error('路径被改了');
+});
+
 (async () => {
   await Promise.all(asyncChecks);
 

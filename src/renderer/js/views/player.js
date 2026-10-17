@@ -91,6 +91,10 @@ const Player = {
   },
 
   async setModpack(path) {
+    // 重复点同一个文件夹（最常见的是在「最近」里连点）：直接不做任何反应。
+    // 否则会重复读整合包信息、重复写日志、重复 Recent.add → 列表重渲染 + 动画重载。
+    if (path && path === this.state.modpackPath) return;
+
     this.state.modpackPath = path;
     let info = { name: baseName(path), version: '', mods: 0 };
     try { info = await window.pulses.files.readModpackInfo(path) || info; }

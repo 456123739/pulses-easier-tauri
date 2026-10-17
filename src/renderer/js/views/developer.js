@@ -31,6 +31,7 @@ const Developer = {
   },
 
   async setNew(path) {
+    if (path && path === this.state.newPath) return;   // 重复点同一个：不反应
     this.state.newPath = path;
     const info = await this._info(path);
     document.getElementById('newpack-picked').classList.remove('is-hidden');
