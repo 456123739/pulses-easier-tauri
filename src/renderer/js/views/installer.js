@@ -84,7 +84,7 @@ const Installer = {
       } catch (_) {}
     }
 
-    const instName = sanitizeInstance(meta.name || baseName(st.extracted || st.zip));
+    const instName = sanitizeInstance(meta.name || zipName(st.zip));
 
     await Overlay.panel('安装整合包', (body, done) => {
       const card = body.closest('.ov-card');
@@ -111,7 +111,7 @@ const Installer = {
           sel.appendChild(o);
         }
         if (releases.length) mcVal = releases[0].id;
-        body.appendChild(fieldRow('版本', sel, '没认出整合包格式，请手动选'));
+        body.appendChild(fieldRow('版本', sel, '请手动选'));
         sel.addEventListener('change', () => { mcVal = sel.value; refreshJava(); });
       }
 
@@ -135,13 +135,14 @@ const Installer = {
         }
         const inp = document.createElement('input');
         inp.className = 'ov-input ins-ver';
-        inp.placeholder = '加载器版本（留空取最新）';
+        inp.placeholder = '版本';
         inp.value = loaderVer;
+        inp.title = '加载器版本，留空自动取最新';
 
         const wrap = el('div', 'ins-inline');
         wrap.appendChild(sel);
         wrap.appendChild(inp);
-        body.appendChild(fieldRow('加载器', wrap, ''));
+        body.appendChild(fieldRow('加载器', wrap, '版本可留空'));
 
         sel.addEventListener('change', () => { loader = sel.value; refreshJava(); });
         inp.addEventListener('input', () => { loaderVer = inp.value.trim(); });
@@ -401,6 +402,14 @@ function loaderLabel(loader, ver) {
   return ver ? `${n} ${ver}` : n;
 }
 
+// 从 zip 文件名里取个能当实例名的名字
+function zipName(p) {
+  let n = baseName(String(p || ''));
+  n = n.replace(/\.(zip|eapack)$/i, '');
+  n = n.replace(/_pulses_extract$/i, '');
+  return n;
+}
+
 // 实例名：去掉 Windows 不允许的字符，兜底用 modpack
 function sanitizeInstance(s) {
   let t = String(s || '').replace(/[\\/:*?"<>|]/g, '_').replace(/[\x00-\x1f]/g, '');
@@ -411,3 +420,4 @@ function sanitizeInstance(s) {
 window.Installer = Installer;
 window.sanitizeInstance = sanitizeInstance;
 window.loaderLabel = loaderLabel;
+window.zipName = zipName;

@@ -1144,7 +1144,23 @@ body.is-booting .titlebar { display: none; }
 
 /* 行内控件贴在右边 */
 .pref-row-field { padding-right: 12px; }
-.ins-control { flex: 0 0 auto; width: 196px; }
+.pref-row > .ins-control {
+  flex: 0 0 auto;
+  width: 196px;
+  /* .ov-input 自带 margin-top:14px（弹窗里输入框是单独一行），
+     放进列表行会被顶下去半个行高 —— 「实例名」那行文字偏下就是这个 */
+  margin-top: 0;
+}
+/* 行内的输入框比弹窗里的紧凑一点，跟 46px 的行高配 */
+.pref-row .ov-input {
+  padding: 8px 12px;
+  transition: background var(--d-fast) var(--ease-out),
+              box-shadow var(--d-fast) var(--ease-out);
+}
+.pref-row .ov-input:focus {
+  background: var(--bg-fill);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
 
 .ins-select,
 .ins-ver {

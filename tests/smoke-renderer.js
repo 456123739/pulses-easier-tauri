@@ -307,6 +307,14 @@ check('实例名清洗', () => {
   if (s('..') !== 'modpack') throw new Error('全是点没有兜底');
 });
 
+check('整合包名兜底', () => {
+  const f = W.zipName;
+  if (typeof f !== 'function') throw new Error('zipName 未导出');
+  if (f('D:/x/红石生电优化26.3.zip') !== '红石生电优化26.3') throw new Error('没去扩展名：' + f('D:/x/a.zip'));
+  if (f('D:/x/Pack_pulses_extract') !== 'Pack') throw new Error('没去解压后缀：' + f('D:/x/Pack_pulses_extract'));
+  if (f('') !== '') throw new Error('空串应原样');
+});
+
 check('加载器文案', () => {
   const f = W.loaderLabel;
   if (f('forge', '47.2.0') !== 'Forge 47.2.0') throw new Error('forge 文案错：' + f('forge', '47.2.0'));
