@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、数据库位置、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.9.2';
+const BUILD_STAMP = 'build 0.9.3';
 
 const App = {
   identity: 'player',
@@ -84,6 +84,18 @@ const App = {
   },
 
   // ── 设置（iOS 分组行）──
+  // 侧栏「更改数据库位置」后面显示当前库路径；太长就来回滚（复用最近打开的滚动）
+  async loadDbPath() {
+    const el = document.getElementById('db-path');
+    const wrap = document.getElementById('db-path-wrap');
+    if (!el) return;
+    let p = '';
+    try { p = await window.pulses.db.getPath(); } catch (_) {}
+    el.textContent = p || '未设置';
+    el.title = p || '';
+    try { if (wrap) Recent._startMarquee([[wrap, el]]); } catch (_) { /* 忽略 */ }
+  },
+
   // ── 数据库位置（原来在「设置」弹窗里，现在直接放侧边栏）──
   async changeDbLocation() {
     this.markNav('nav-db');
@@ -111,6 +123,7 @@ const App = {
     Log.ok('数据库位置已更新：' + picked);
     App.setStatus('数据库：' + picked);
     await App.loadWhitelist();
+    await App.loadDbPath();
   },
 
   async loadUiPrefs() {
@@ -380,6 +393,7 @@ async function boot() {
       // 界面显示出来之后再量一次路径宽度 —— 隐藏时宽高都是 0，量不出溢出，
       // 不补这一下就要等用户点一下才开始滚。
       try { if (window.Recent) Recent.refreshMarquee(); } catch (_) { /* 忽略 */ }
+      try { App.loadDbPath(); } catch (_) { /* 忽略 */ }
     } catch (_) { /* 忽略 */ }
 
     try {
@@ -455,6 +469,7 @@ async function boot() {
   });
 
   await step('界面设置', () => App.loadUiPrefs());
+  await step('数据库路径', () => App.loadDbPath());
   await step('白名单', () => App.loadWhitelist());
 
   await step('动画自检', () => {
