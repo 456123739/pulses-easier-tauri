@@ -138,11 +138,16 @@ window.pulses = {
   // 拖放被 Tauri 接管，只发 tauri://drag-* 事件（好处是能拿到真实路径）。
   // 所以这里挂原生事件，并把物理像素坐标换算成 CSS 像素供命中判定。
   fileDrop: (cb) => {
-    const wv = T.webview;
-    if (!wv || typeof wv.getCurrentWebview !== 'function') return;
+    let cur = null;
     try {
-      const cur = wv.getCurrentWebview();
-      if (!cur || typeof cur.onDragDropEvent !== 'function') return;
+      if (T.webview && typeof T.webview.getCurrentWebview === 'function') {
+        cur = T.webview.getCurrentWebview();
+      } else if (T.webviewWindow && typeof T.webviewWindow.getCurrentWebviewWindow === 'function') {
+        cur = T.webviewWindow.getCurrentWebviewWindow();
+      }
+    } catch (_) { cur = null; }
+    if (!cur || typeof cur.onDragDropEvent !== 'function') return;
+    try {
       cur.onDragDropEvent((ev) => {
         const p = ev && ev.payload ? ev.payload : ev;
         if (!p || !p.type) return;

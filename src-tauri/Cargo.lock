@@ -2662,7 +2662,7 @@ dependencies = [
 
 [[package]]
 name = "pulses-easier"
-version = "0.11.2-beta"
+version = "0.11.3-beta"
 dependencies = [
  "dirs 5.0.1",
  "libc",

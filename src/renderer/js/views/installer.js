@@ -331,8 +331,13 @@ const Installer = {
             ptext.textContent = '安装完成 ✓';
             start.textContent = '已完成';
             App.setStatus('整合包已装好：' + instance);
-            Log.ok(`安装完成：${instance}（下载 ${res.files} 个文件，写入整合包 ${res.moved} 个）`);
+            Log.ok(`安装完成：${instance}（下载 ${res.files} 个文件，写入整合包 ${res.moved} 个，模组 ${res.mods || 0} 个）`);
             Log.debug('位置：' + res.dir);
+            // 官方 CF 导出包只有 overrides，模组不在包里 —— 装完是空的，得说清楚
+            if (!res.mods && (meta.format === 'curseforge' || meta.format === 'modrinth')) {
+              Log.warn('这个整合包里没有模组文件，模组列表会是空的');
+              Log.warn('官方 CurseForge 导出包通常不含模组，需要用 PCL 导入补全');
+            }
             try { localStorage.setItem(MCRootKey, st.root); } catch (_) {}
             // 装完直接定位过去，玩家端可以接着打更新包
             if (res.dir && window.Player) {

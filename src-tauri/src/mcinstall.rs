@@ -1198,6 +1198,7 @@ pub fn install(
         "files": files,
         "moved": moved,
         "content": content.map(|c| c.to_string_lossy().to_string()).unwrap_or_default(),
+        "mods": count_mods(&inst_dir),
         "failed": fails,
     })
 }
@@ -1222,6 +1223,18 @@ pub fn count_files(src: &Path) -> usize {
         }
     }
     n
+}
+
+/// 数一数实例里到底有几个模组（.jar / .jar.disabled）
+pub fn count_mods(inst_dir: &Path) -> usize {
+    let mods = inst_dir.join("mods");
+    let Ok(rd) = std::fs::read_dir(&mods) else { return 0 };
+    rd.flatten()
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().to_ascii_lowercase();
+            n.ends_with(".jar") || n.ends_with(".jar.disabled")
+        })
+        .count()
 }
 
 /// 实例名清洗：去掉 Windows 不允许的字符
