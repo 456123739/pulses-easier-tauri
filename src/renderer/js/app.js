@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、数据库位置、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.9.4';
+const BUILD_STAMP = 'build 0.9.5';
 
 const App = {
   identity: 'player',
@@ -383,18 +383,38 @@ async function boot() {
     if (shown) return;
     shown = true;
 
-    try {
-      const appEl = document.getElementById('app');
-      Splash.finish();
-      if (appEl) appEl.classList.remove('is-hidden');
-      document.querySelectorAll('.group').forEach((g, i) => {
-        g.style.animation = `groupIn 420ms var(--ease-out) ${120 + i * 60}ms both`;
-      });
-      // 界面显示出来之后再量一次路径宽度 —— 隐藏时宽高都是 0，量不出溢出，
-      // 不补这一下就要等用户点一下才开始滚。
-      try { if (window.Recent) Recent.refreshMarquee(); } catch (_) { /* 忽略 */ }
-      try { App.loadDbPath(); } catch (_) { /* 忽略 */ }
-    } catch (_) { /* 忽略 */ }
+    // 启动时窗口只有卡片那么大：先让卡片淡出，再把窗口放大到主界面尺寸。
+    try { Splash.finish(); } catch (_) { /* 忽略 */ }
+
+    setTimeout(() => {
+      // ① 窗口放大（此时卡片已经淡完，不会看到它被拉伸）
+      try {
+        const W = window.__TAURI__ && window.__TAURI__.window;
+        const D = window.__TAURI__ && window.__TAURI__.dpi;
+        if (W && typeof W.getCurrentWindow === 'function') {
+          const win = W.getCurrentWindow();
+          const mk = (w, h) => (D && D.LogicalSize)
+            ? new D.LogicalSize(w, h) : { width: w, height: h };
+          try { win.setMinSize(mk(960, 640)); } catch (_) { /* 忽略 */ }
+          try { win.setSize(mk(1280, 820)); } catch (_) { /* 忽略 */ }
+          try { win.center(); } catch (_) { /* 忽略 */ }
+        }
+      } catch (_) { /* 忽略 */ }
+
+      // ② 显示主界面
+      try {
+        document.body.classList.remove('is-booting');
+        const appEl = document.getElementById('app');
+        if (appEl) appEl.classList.remove('is-hidden');
+        document.querySelectorAll('.group').forEach((g, i) => {
+          g.style.animation = `groupIn 420ms var(--ease-out) ${120 + i * 60}ms both`;
+        });
+        // 界面显示出来之后再量一次路径宽度 —— 隐藏时宽高都是 0，量不出溢出，
+        // 不补这一下就要等用户点一下才开始滚。
+        try { if (window.Recent) Recent.refreshMarquee(); } catch (_) { /* 忽略 */ }
+        try { App.loadDbPath(); } catch (_) { /* 忽略 */ }
+      } catch (_) { /* 忽略 */ }
+    }, 300);
 
     try {
       if (failures.length) {

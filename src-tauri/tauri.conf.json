@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Pulses Easier",
-  "version": "0.9.4-beta",
+  "version": "0.9.5-beta",
   "identifier": "com.pulses.easier",
   "build": {
     "frontendDist": "../src/renderer",
@@ -13,15 +13,16 @@
     "windows": [
       {
         "title": "Pulses Easier",
-        "width": 1280,
-        "height": 820,
-        "minWidth": 960,
-        "minHeight": 640,
+        "width": 320,
+        "height": 176,
+        "minWidth": 320,
+        "minHeight": 176,
         "resizable": true,
         "fullscreen": false,
         "decorations": false,
-        "transparent": false,
-        "backgroundColor": "#0B0B0D"
+        "transparent": true,
+        "backgroundColor": "#00000000",
+        "center": true
       }
     ],
     "security": {

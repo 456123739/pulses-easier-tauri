@@ -54,19 +54,20 @@ img { display: block; max-width: 100%; }
    原来用 CSS animation，从 HTML 解析那一刻就开始跑，
    等 WebView 窗口真正显示出来早就播完了 —— 看着就是「瞬间弹出」。 */
 .splash {
-  position: fixed; top: 36px; left: 0; right: 0; bottom: 0; z-index: 9999;
-  display: flex; align-items: flex-end; justify-content: flex-end;
-  padding: 22px;
-  background: var(--bg-system);
+  /* 启动时整个窗口就是这张卡片：无背景、无内边距 */
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: stretch; justify-content: stretch;
+  padding: 0;
+  background: transparent;
   transition: opacity var(--d-slow) var(--spring-soft);
 }
 .splash.is-out { opacity: 0; pointer-events: none; }
 
 /* 中间那张小卡片：加载期间只有它，加载完才出主界面 */
 .splash-card {
-  display: flex; flex-direction: column; align-items: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 16px;
-  width: 280px;
+  width: 100%; height: 100%;
   padding: 20px 22px 18px;
   border-radius: var(--r-card);
   background: var(--bg-grouped-2);
@@ -123,6 +124,9 @@ img { display: block; max-width: 100%; }
 }
 
 /* ════════════════ 侧边栏 ════════════════ */
+/* 启动期（窗口还只有卡片那么大）标题栏不出现 */
+body.is-booting .titlebar { display: none; }
+
 /* ── 自定义标题栏 ──
    浮在内容之上（不再是独立的一行），这样侧栏列表往上滚的时候
    会从它底下穿过去 —— backdrop-filter 才有东西可模糊。
