@@ -75,7 +75,7 @@ pub fn db_is_valid(path: String) -> bool {
     db::is_valid_database(&PathBuf::from(&path))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn db_describe(path: String) -> Value {
     db::describe(&PathBuf::from(&path))
 }
@@ -85,7 +85,7 @@ pub fn db_clear_cache() -> Value {
     db::clear_cache()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn db_migrate(src: String, dst: String, skip: Option<Vec<String>>) -> Value {
     db::migrate(
         &PathBuf::from(&src),
@@ -116,7 +116,7 @@ pub fn recent_clear() -> Vec<String> {
 }
 
 // ── 比对 ──
-#[tauri::command]
+#[tauri::command(async)]
 pub fn diff_packs(old_root: String, new_root: String, update_pack: Option<bool>) -> Value {
     // update_pack=true：new_root 是增量更新包，旧包里没带到的文件不能判删除
     differ::diff_packs(
@@ -127,7 +127,7 @@ pub fn diff_packs(old_root: String, new_root: String, update_pack: Option<bool>)
 }
 
 // ── 更新 ──
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_build_plan(
     diff: Value,
     checked: Value,
@@ -160,12 +160,12 @@ pub async fn update_execute(
     .await)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_verify(plan: Value, old_root: String, new_root: String) -> Value {
     updater::verify(&plan, &PathBuf::from(&old_root), &PathBuf::from(&new_root))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_estimate(plan: Value, old_root: String) -> Value {
     updater::estimate(&plan, &PathBuf::from(&old_root))
 }
@@ -206,6 +206,12 @@ pub fn dl_cancel() -> bool {
 }
 
 // ── 更新包 ──
+/// 认一下这个 zip 是整合包还是更新包（只看条目名，不解压）
+#[tauri::command(async)]
+pub fn pack_kind(path: String) -> Value {
+    eapack::pack_kind(&PathBuf::from(&path))
+}
+
 #[tauri::command]
 pub async fn pack_read_entry(
     path: String,
@@ -214,7 +220,7 @@ pub async fn pack_read_entry(
     Ok(eapack::read_entry(&PathBuf::from(&path), &entry).await)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pack_clean_extract(path: String) -> Value {
     eapack::clean_extract(&PathBuf::from(&path))
 }
@@ -259,12 +265,12 @@ pub fn fs_exists(path: String) -> bool {
     std::path::Path::new(&path).exists()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fs_modpack_info(path: String) -> Value {
     eapack::modpack_info(&PathBuf::from(&path))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fs_hash(path: String, algo: Option<String>) -> Option<String> {
     let algo = algo.unwrap_or_else(|| "sha1".to_string());
     let data = std::fs::read(&path).ok()?;

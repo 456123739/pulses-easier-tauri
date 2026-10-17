@@ -878,6 +878,14 @@ const PACK_META: [&str; 6] = [
     "meta.json",
 ];
 
+/// 整合包根下这几个目录装的是「游戏目录里的东西」，要摊平到实例根。
+///
+///   CurseForge / Modrinth → overrides/
+///   Prism / MultiMC       → .minecraft/
+///
+/// 不摊平的话 mods 会被塞进 versions/<实例>/overrides/mods，游戏根本读不到。
+const FLATTEN: [&str; 3] = ["overrides", ".minecraft", "minecraft"];
+
 /// 把整合包内容并进实例目录（同名覆盖）
 fn merge_into(src: &Path, dst: &Path) -> Result<usize, String> {
     merge_at(src, dst, true)
@@ -893,6 +901,11 @@ fn merge_at(src: &Path, dst: &Path, top: bool) -> Result<usize, String> {
             continue;
         }
         let p = e.path();
+        // overrides/ 和 .minecraft/ 的内容直接摊到实例根，不保留这一层
+        if top && p.is_dir() && FLATTEN.iter().any(|f| f.eq_ignore_ascii_case(&name)) {
+            n += merge_at(&p, dst, false)?;
+            continue;
+        }
         let d = dst.join(&name);
         if p.is_dir() {
             n += merge_at(&p, &d, false)?;
@@ -1111,9 +1124,13 @@ pub fn install(
             let src = root.join("versions").join(&loader_id);
             if src.exists() {
                 if inst_dir.exists() {
-                    let _ = std::fs::remove_dir_all(&inst_dir);
-                }
-                if let Err(e) = move_dir(&src, &inst_dir) {
+                    // 同名实例已经在了：并进去，**不能整个删掉** ——
+                    // 那会把玩家自己加的模组、存档配置一起抹了
+                    if let Err(e) = merge_into(&src, &inst_dir) {
+                        return fail(e);
+                    }
+                    let _ = std::fs::remove_dir_all(&src);
+                } else if let Err(e) = move_dir(&src, &inst_dir) {
                     return fail(e);
                 }
             } else if !inst_dir.exists() {
@@ -1151,8 +1168,19 @@ pub fn install(
             ));
         } else if c.is_dir() {
             say("写入整合包文件…");
+            let expect = count_files(c);
             match merge_into(c, &inst_dir) {
-                Ok(n) => moved = n,
+                Ok(n) => {
+                    moved = n;
+                    // 源里明明有文件却一个都没搬过去 —— 多半是路径没对上，
+                    // 这种「装完了但没东西」最坑，必须报出来
+                    if expect > 0 && n == 0 {
+                        fails.push(format!(
+                            "整合包内容没有被写入：{}（源目录里有 {expect} 个文件）",
+                            c.display()
+                        ));
+                    }
+                }
                 Err(e) => fails.push(format!("写入整合包内容：{e}")),
             }
         }
@@ -1169,8 +1197,31 @@ pub fn install(
         "version": loader_id,
         "files": files,
         "moved": moved,
+        "content": content.map(|c| c.to_string_lossy().to_string()).unwrap_or_default(),
         "failed": fails,
     })
+}
+
+/// 数一数整合包内容里有多少个文件（跳过顶层元信息文件）
+pub fn count_files(src: &Path) -> usize {
+    let mut n = 0usize;
+    let mut stack = vec![(src.to_path_buf(), true)];
+    while let Some((dir, top)) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if top && PACK_META.iter().any(|m| *m == name) {
+                continue;
+            }
+            let p = e.path();
+            if p.is_dir() {
+                stack.push((p, false));
+            } else {
+                n += 1;
+            }
+        }
+    }
+    n
 }
 
 /// 实例名清洗：去掉 Windows 不允许的字符

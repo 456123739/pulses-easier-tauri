@@ -53,20 +53,13 @@ const Player = {
     document.getElementById('btn-pick-modpack')
       .addEventListener('click', () => this.pickModpack());
 
-    // STEP 2：拖入 / 点击选择更新包
+    // STEP 2：拖入 / 点击选择（更新包和整合包都往这儿扔，自动认）
+    //
+    // HTML5 的 drop 事件在 Tauri 里收不到：窗口默认 dragDropEnabled=true，
+    // 拖放被 Tauri 接管了。所以走原生事件 —— 好处是能拿到真实文件路径。
     const dz = document.getElementById('drop-zone');
-    dz.addEventListener('click', () => this.pickPack());
-    dz.addEventListener('dragover', e => {
-      e.preventDefault();
-      dz.classList.add('is-over');
-    });
-    dz.addEventListener('dragleave', () => dz.classList.remove('is-over'));
-    dz.addEventListener('drop', e => {
-      e.preventDefault();
-      dz.classList.remove('is-over');
-      const f = e.dataTransfer.files[0];
-      if (f && f.path) this.onPackDropped(f.path);
-    });
+    if (dz) dz.addEventListener('click', () => this.pickPack());
+    this._initDrop();
 
     document.getElementById('btn-clear-pack')
       .addEventListener('click', () => this.clearPack());
@@ -120,12 +113,70 @@ const Player = {
     this._refreshSteps();
   },
 
+  // ── 拖放 ──
+  _initDrop() {
+    if (typeof window.pulses.fileDrop !== 'function') return;
+    const dz = document.getElementById('drop-zone');
+    window.pulses.fileDrop(({ type, paths, x, y }) => {
+      if (type === 'leave') {
+        if (dz) dz.classList.remove('is-over');
+        return;
+      }
+      if (type === 'enter' || type === 'over') {
+        if (dz) dz.classList.toggle('is-over', this._hitDrop(x, y));
+        return;
+      }
+      if (type === 'drop') {
+        if (dz) dz.classList.remove('is-over');
+        const p = paths && paths[0];
+        if (p) this.acceptFile(p);
+      }
+    });
+  },
+
+  // 鼠标是不是落在投放区上（只用来点亮高亮，落哪儿都认）
+  _hitDrop(x, y) {
+    const dz = document.getElementById('drop-zone');
+    if (!dz || x < 0 || y < 0) return false;
+    let r = null;
+    try { r = dz.getBoundingClientRect(); } catch (_) { return false; }
+    if (!r) return false;
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  },
+
   // ── STEP 2 ──
   async pickPack() {
-    const p = await window.pulses.dialog.openFile('选择更新包', [
-      { name: '更新包', extensions: ['zip', 'eapack'] },
+    const p = await window.pulses.dialog.openFile('选择更新包或整合包', [
+      { name: '更新包 / 整合包', extensions: ['zip', 'eapack'] },
     ]);
     if (!p) return;
+    await this.acceptFile(p);
+  },
+
+  // 自动识别：整合包 → 安装流程；更新包 → 原来的比对流程
+  //
+  // 之前不认就一律当更新包，把 CF 整合包拖进来会去跟玩家整合包做全量比对
+  // （整棵树遍历 + 每个文件算 sha1），主线程被占满，窗口直接「未响应」。
+  async acceptFile(p) {
+    if (this.state.busy) {
+      Log.warn('正在处理上一个文件，请稍候');
+      return;
+    }
+
+    let k = null;
+    try { k = await window.pulses.pack.kind(p); } catch (_) {}
+
+    if (k && k.ok && k.kind === 'modpack') {
+      const fmt = window.formatLabel ? formatLabel(k.format) : '整合包';
+      Log.ok(`识别为${fmt}，转到安装`);
+      App.setStatus('识别为' + fmt);
+      if (window.Installer) await Installer.startWith(p, k);
+      return;
+    }
+
+    if (k && k.ok) {
+      Log.debug(`识别为${formatLabel(k.format)}`);
+    }
     await this.onPackDropped(p);
   },
 

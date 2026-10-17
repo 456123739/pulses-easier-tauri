@@ -1,71 +1,57 @@
 // installer.js — 安装整合包（把 CF / MR 整合包变成 PCL 能直接扫到的实例）
 //
-// 流程：
-//   选游戏目录 → 选整合包 zip → 解压识别 → 确认信息 → 装游戏本体+加载器
+// 能不问就不问：
+//   · 游戏目录 —— 记住上次用的；没有就从已定位的整合包路径推（.../versions/X → ...）
+//   · 版本 / 加载器 —— 直接从 zip 里的 manifest.json / mmc-pack.json 读，不解压
+//   · 实例名 —— 取整合包自带的名字，没有就用 zip 文件名
+//   · Java —— 只在 Forge / NeoForge 时需要，本机有就直接用
+// 真正需要玩家点头的只有两件事：装不装、装不装 Java。
 //
 // 产出（PCL 版本隔离的标准布局，PCL 一扫描就能看到）：
 //   <游戏目录>/versions/<实例名>/<实例名>.json + mods/ config/ …
 //   <游戏目录>/libraries/  assets/
-//
-// Java 只在装 Forge / NeoForge 时需要（安装器是 Java 程序）。
-// Fabric / Quilt 官方直接给完整 profile，不需要 Java。
+
+const MCRootKey = 'pulses.mcRoot';
 
 const Installer = {
   state: {
     root: null,
     zip: null,
-    extracted: null,
-    content: null,
     meta: null,
     busy: false,
   },
 
-  // 入口：侧栏「安装整合包」
+  // 侧栏入口：只问整合包，其余能推就推
   async open() {
     if (this.state.busy) {
       Log.warn('正在安装中，请稍候');
       return;
     }
-
-    // 1) 游戏目录
-    const root = await window.pulses.dialog.openFolder('选择游戏目录（.minecraft 那一层）');
-    if (!root) return;
-
-    // 2) 整合包
     const zip = await window.pulses.dialog.openFile('选择整合包', [
       { name: '整合包', extensions: ['zip'] },
     ]);
     if (!zip) return;
 
-    // 3) 解压
-    App.setStatus('正在解压整合包…');
-    const out = zip.replace(/\.[^.]+$/, '') + '_pulses_extract';
-    try { await window.pulses.pack.cleanExtract(out); } catch (_) {}
-    const unzip = await window.pulses.files.unzip(zip, out);
-    if (!unzip || !unzip.ok) {
-      await Overlay.alert('解压失败', (unzip && unzip.msg) || '未知错误', { level: 'error' });
+    let kind = null;
+    try { kind = await window.pulses.pack.kind(zip); } catch (_) {}
+    await this.startWith(zip, kind);
+  },
+
+  // 已经知道 zip 了（拖进来的 / 别处识别出来的）
+  async startWith(zip, kind) {
+    if (this.state.busy) {
+      Log.warn('正在安装中，请稍候');
       return;
     }
-    const base = await unwrapPackRoot(out);
 
-    // 内容目录：CF 的 overrides/、MMC 的 .minecraft/、MR 的 overrides/
-    let content = base;
-    for (const sub of ['overrides', '.minecraft', 'minecraft']) {
-      const p = joinPath(base, sub);
-      let st = null;
-      try { st = await window.pulses.files.stat(p); } catch (_) {}
-      if (st && st.isDir) { content = p; break; }
+    // 游戏目录：记住的 → 从已定位整合包推 → 实在没有才问
+    let root = guessGameDir();
+    if (!root) {
+      root = await window.pulses.dialog.openFolder('选择游戏目录（.minecraft 那一层）');
+      if (!root) return;
     }
 
-    // 4) 识别
-    let meta = { ok: false };
-    try { meta = await window.pulses.mc.packMeta(base) || meta; } catch (_) {}
-
-    this.state = {
-      root, zip, extracted: base, content, meta,
-      busy: false,
-    };
-
+    this.state = { root, zip, meta: kind || {}, busy: false };
     await this._panel();
   },
 
@@ -73,15 +59,17 @@ const Installer = {
   async _panel() {
     const st = this.state;
     const meta = st.meta || {};
+    const known = !!(meta && meta.ok && meta.mc);
 
-    // 版本清单（认不出来才要用户自己选）
+    // 认不出来才需要版本列表
     let releases = [];
-    if (!meta.ok) {
+    if (!known) {
       App.setStatus('正在获取版本列表…');
       try {
         const r = await window.pulses.mc.versions(true);
         releases = (r && r.versions) || [];
       } catch (_) {}
+      App.setStatus('就绪');
     }
 
     const instName = sanitizeInstance(meta.name || zipName(st.zip));
@@ -89,18 +77,18 @@ const Installer = {
     await Overlay.panel('安装整合包', (body, done) => {
       const card = body.closest('.ov-card');
       const footBtn = card && card.querySelector('.ov-foot .ov-btn');
-      this._done = done;
 
       // 概要
       const sum = el('div', 'ins-sum');
       sum.appendChild(el('div', 'ins-title', instName));
-      sum.appendChild(el('div', 'ins-sub', baseName(st.zip)));
+      sum.appendChild(el('div', 'ins-sub',
+        `${formatLabel(meta.format)} · ${baseName(st.zip)}`));
       body.appendChild(sum);
 
       // 版本
-      let mcVal = meta.mc || '';
-      if (meta.ok) {
-        body.appendChild(infoRow('版本', mcVal || '未知'));
+      let mcVal = known ? meta.mc : '';
+      if (known) {
+        body.appendChild(infoRow('版本', mcVal));
       } else {
         const sel = document.createElement('select');
         sel.className = 'ins-select';
@@ -116,10 +104,10 @@ const Installer = {
       }
 
       // 加载器
-      let loader = meta.loader || (meta.ok ? 'vanilla' : 'forge');
+      let loader = meta.loader || (known ? 'vanilla' : 'forge');
       let loaderVer = meta.loaderVer || '';
 
-      if (meta.ok) {
+      if (known) {
         body.appendChild(infoRow('加载器', loaderLabel(loader, loaderVer)));
       } else {
         const sel = document.createElement('select');
@@ -147,6 +135,9 @@ const Installer = {
         sel.addEventListener('change', () => { loader = sel.value; refreshJava(); });
         inp.addEventListener('input', () => { loaderVer = inp.value.trim(); });
       }
+
+      // 游戏目录（只展示，不占一次询问）
+      body.appendChild(infoRow('游戏目录', st.root));
 
       // 实例名
       const nameInp = document.createElement('input');
@@ -216,7 +207,6 @@ const Installer = {
         } catch (_) { needMajor = 17; }
 
         const list = await getJavaList();
-
         // 刚好够用的最低版本优先：老 Forge 安装器在 Java 21 上会挂
         const ok = list.filter(j => j.major >= needMajor).sort((a, b) => a.major - b.major)[0];
         if (ok) {
@@ -262,7 +252,6 @@ const Installer = {
         javaBtn.disabled = false;
       });
 
-      // 初次检查
       refreshJava();
 
       // ── 开始 ──
@@ -296,16 +285,42 @@ const Installer = {
           }
         });
 
+        // 解压整合包 → 找内容目录
+        let out = '';
         try {
+          ptext.textContent = '正在解压整合包…';
+          out = st.zip.replace(/\.[^.]+$/, '') + '_pulses_extract';
+          try { await window.pulses.pack.cleanExtract(out); } catch (_) {}
+          const unzip = await window.pulses.files.unzip(st.zip, out);
+          if (!unzip || !unzip.ok) {
+            throw new Error((unzip && unzip.msg) || '解压失败');
+          }
+        } catch (e) {
+          this.state.busy = false;
+          if (footBtn) footBtn.disabled = false;
+          ptext.textContent = '安装失败';
+          err.textContent = String(e && e.message ? e.message : e);
+          start.disabled = false;
+          start.textContent = '重试';
+          Log.error('解压失败：' + e);
+          return;
+        }
+
+        try {
+          // 交给 Rust 摊平：overrides/ 和 .minecraft/ 的内容会直接落到实例根，
+          // 根目录的 mods/ 也一并并进去。前端只负责剥掉多套的那一层。
+          let content = out;
+          try { content = await unwrapPackRoot(out); } catch (_) {}
+
           const res = await window.pulses.mc.install({
-            root: this.state.root,
+            root: st.root,
             mc: mcVal,
             loader,
             loaderVer,
             instance,
             mirror: true,
             java: javaPath,
-            content: this.state.content || '',
+            content: content || '',
           });
 
           this.state.busy = false;
@@ -316,14 +331,15 @@ const Installer = {
             ptext.textContent = '安装完成 ✓';
             start.textContent = '已完成';
             App.setStatus('整合包已装好：' + instance);
-            Log.ok(`安装完成：${instance}（${res.files} 个文件）`);
+            Log.ok(`安装完成：${instance}（下载 ${res.files} 个文件，写入整合包 ${res.moved} 个）`);
             Log.debug('位置：' + res.dir);
+            try { localStorage.setItem(MCRootKey, st.root); } catch (_) {}
             // 装完直接定位过去，玩家端可以接着打更新包
             if (res.dir && window.Player) {
               try { await Player.setModpack(res.dir); } catch (_) {}
             }
             setTimeout(() => {
-              this._cleanup();
+              this._cleanup(out);
               done(res);
             }, 1400);
           } else {
@@ -333,6 +349,7 @@ const Installer = {
             start.disabled = false;
             start.textContent = '重试';
             Log.error('安装失败：' + msg);
+            this._cleanup(out);
           }
         } catch (e) {
           this.state.busy = false;
@@ -342,23 +359,16 @@ const Installer = {
           start.disabled = false;
           start.textContent = '重试';
           Log.error('安装异常：' + e);
+          this._cleanup(out);
         }
       });
     });
-
-    this._cleanup();
   },
 
   // 解压目录用完就删
-  async _cleanup() {
-    const st = this.state;
-    if (st && st.extracted) {
-      try { await window.pulses.pack.cleanExtract(st.extracted); } catch (_) {}
-    }
-    if (this.state) {
-      this.state.extracted = null;
-      this.state.content = null;
-    }
+  async _cleanup(out) {
+    if (!out) return;
+    try { await window.pulses.pack.cleanExtract(out); } catch (_) {}
   },
 };
 
@@ -402,6 +412,17 @@ function loaderLabel(loader, ver) {
   return ver ? `${n} ${ver}` : n;
 }
 
+function formatLabel(fmt) {
+  const names = {
+    curseforge: 'CurseForge 整合包',
+    modrinth: 'Modrinth 整合包',
+    prism: 'Prism 整合包',
+    pulses: 'Pulses 更新包',
+    unknown: '整合包',
+  };
+  return names[fmt] || '整合包';
+}
+
 // 从 zip 文件名里取个能当实例名的名字
 function zipName(p) {
   let n = baseName(String(p || ''));
@@ -417,7 +438,22 @@ function sanitizeInstance(s) {
   return t || 'modpack';
 }
 
+// 猜游戏目录：记住的 → 从已定位整合包推（.../versions/<名字> → ...）
+function guessGameDir() {
+  try {
+    const saved = localStorage.getItem(MCRootKey);
+    if (saved) return saved;
+  } catch (_) {}
+  const mp = (window.Player && Player.state && Player.state.modpackPath) || '';
+  const norm = String(mp).replace(/\\/g, '/').replace(/\/+$/, '');
+  const m = norm.match(/^(.*)\/versions\/[^/]+$/i);
+  if (m && m[1]) return m[1];
+  return '';
+}
+
 window.Installer = Installer;
 window.sanitizeInstance = sanitizeInstance;
 window.loaderLabel = loaderLabel;
 window.zipName = zipName;
+window.guessGameDir = guessGameDir;
+window.formatLabel = formatLabel;

@@ -38,6 +38,7 @@ fn main() {
             commands::update_estimate,
             commands::dl_start,
             commands::dl_cancel,
+            commands::pack_kind,
             commands::pack_read_entry,
             commands::pack_export,
             commands::pack_clean_extract,

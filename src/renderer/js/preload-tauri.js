@@ -67,6 +67,8 @@ window.pulses = {
     readEntry:     (p, entry) => invoke('pack_read_entry', { path: p, entry }),
     export:        (opts) => invoke('pack_export', { opts }),
     cleanExtract:  (p) => invoke('pack_clean_extract', { path: p }),
+    // 认一下拖进来的是整合包还是更新包（只看 zip 条目名，不解压）
+    kind:          (p) => invoke('pack_kind', { path: p }),
     onProgress:    (cb) => onEvent('pack:progress', cb),
     readSettings:  (p) => invoke('pack_read_entry', { path: p, entry: 'settings.json' }).then(parseJSON),
     readManifest:  (p) => invoke('pack_read_entry', { path: p, entry: 'manifest.json' }).then(parseJSON),
@@ -129,6 +131,30 @@ window.pulses = {
     install:   (opts) => invoke('mc_install', { opts }),
     cancel:    () => invoke('mc_cancel'),
     onProgress: (cb) => onEvent('mc:progress', cb),
+  },
+
+  // ── 原生文件拖放 ──
+  // HTML5 的 drop 事件在 Tauri 里收不到：窗口默认 dragDropEnabled=true，
+  // 拖放被 Tauri 接管，只发 tauri://drag-* 事件（好处是能拿到真实路径）。
+  // 所以这里挂原生事件，并把物理像素坐标换算成 CSS 像素供命中判定。
+  fileDrop: (cb) => {
+    const wv = T.webview;
+    if (!wv || typeof wv.getCurrentWebview !== 'function') return;
+    try {
+      const cur = wv.getCurrentWebview();
+      if (!cur || typeof cur.onDragDropEvent !== 'function') return;
+      cur.onDragDropEvent((ev) => {
+        const p = ev && ev.payload ? ev.payload : ev;
+        if (!p || !p.type) return;
+        const dpr = window.devicePixelRatio || 1;
+        cb({
+          type: p.type,
+          paths: p.paths || [],
+          x: p.position ? p.position.x / dpr : -1,
+          y: p.position ? p.position.y / dpr : -1,
+        });
+      });
+    } catch (_) { /* 没有原生拖放就退回 HTML5（浏览器里调试用） */ }
   },
 
   version: () => invoke('app_version'),

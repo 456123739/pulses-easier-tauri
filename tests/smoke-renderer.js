@@ -315,6 +315,23 @@ check('整合包名兜底', () => {
   if (f('') !== '') throw new Error('空串应原样');
 });
 
+check('游戏目录推断', () => {
+  const g = W.guessGameDir;
+  if (typeof g !== 'function') throw new Error('guessGameDir 未导出');
+  const P = W.Player;
+  const real = P.state.modpackPath;
+  try {
+    P.state.modpackPath = 'D:\\MC\\versions\\红石生电优化';
+    const got = g();
+    if (!/MC$/.test(got)) throw new Error('没从 versions 推出来：' + got);
+    P.state.modpackPath = 'D:\\随便一个文件夹';
+    // 推不出来时必须返回空串（让调用方去问），不能瞎猜
+    if (g() !== '') throw new Error('推不出来时应返回空：' + g());
+  } finally {
+    P.state.modpackPath = real;
+  }
+});
+
 check('加载器文案', () => {
   const f = W.loaderLabel;
   if (f('forge', '47.2.0') !== 'Forge 47.2.0') throw new Error('forge 文案错：' + f('forge', '47.2.0'));
@@ -373,7 +390,10 @@ check('DOM 引用完整性（id / class 都真实存在）', () => {
 // unwrapPackRoot 是 async，所以这里单独走异步检查。
 const asyncChecks = [];
 function checkAsync(name, fn) {
-  asyncChecks.push((async () => {
+  // 存的是「待执行的 thunk」，不是已经开始跑的 promise。
+  // 这些检查会临时替换 window.pulses / Log 之类的全局，
+  // 一起跑会互相踩，报出来的错对不上真实原因。
+  asyncChecks.push(async () => {
     try {
       await fn();
       console.log('  ✓ ' + name);
@@ -381,7 +401,7 @@ function checkAsync(name, fn) {
       failures.push(name + ' → ' + e.message);
       console.log('  ✗ ' + name + '：' + e.message);
     }
-  })());
+  });
 }
 
 checkAsync('更新包顶层文件夹剥离', async () => {
@@ -421,6 +441,64 @@ checkAsync('更新包顶层文件夹剥离', async () => {
   }
 });
 
+// ── 拖入自动识别 ──
+// 之前不认格式，CF 整合包拖进来会被当成更新包去做全量比对（遍历 + 逐文件 sha1），
+// 主线程占满，窗口「未响应」。
+checkAsync('拖入整合包自动转安装，不当更新包处理', async () => {
+  const P = W.Player, I = W.Installer;
+  const realKind = W.pulses.pack.kind;
+  const realStart = I.startWith;
+  const realDrop = P.onPackDropped;
+  const realBusy = P.state.busy;
+  P.state.busy = false;
+
+  let started = null, dropped = 0;
+  W.pulses.pack.kind = async () => ({
+    ok: true, kind: 'modpack', format: 'curseforge',
+    mc: '1.20.1', loader: 'forge', loaderVer: '47.2.0', name: '红石生电优化',
+  });
+  I.startWith = async (p, k) => { started = { p, k }; };
+  P.onPackDropped = async () => { dropped++; };
+  try {
+    await P.acceptFile('D:/x/pack.zip');
+  } finally {
+    W.pulses.pack.kind = realKind;
+    I.startWith = realStart;
+    P.onPackDropped = realDrop;
+    P.state.busy = realBusy;
+  }
+
+  if (dropped) throw new Error('整合包被当成更新包了');
+  if (!started) throw new Error('没有转到安装流程');
+  if (started.p !== 'D:/x/pack.zip') throw new Error('路径没传对');
+  if (started.k.loaderVer !== '47.2.0') throw new Error('元信息没带过去');
+});
+
+checkAsync('拖入更新包仍走比对流程', async () => {
+  const P = W.Player, I = W.Installer;
+  const realKind = W.pulses.pack.kind;
+  const realStart = I.startWith;
+  const realDrop = P.onPackDropped;
+  const realBusy = P.state.busy;
+  P.state.busy = false;
+
+  let started = 0, dropped = 0;
+  W.pulses.pack.kind = async () => ({ ok: true, kind: 'update', format: 'pulses' });
+  I.startWith = async () => { started++; };
+  P.onPackDropped = async () => { dropped++; };
+  try {
+    await P.acceptFile('D:/x/update.zip');
+  } finally {
+    W.pulses.pack.kind = realKind;
+    I.startWith = realStart;
+    P.onPackDropped = realDrop;
+    P.state.busy = realBusy;
+  }
+
+  if (started) throw new Error('更新包被当成整合包了');
+  if (dropped !== 1) throw new Error('没有走比对流程');
+});
+
 // ── 重复定位同一文件夹 ──
 // 在「最近」里连点同一个条目会重复读信息、重复写日志、重复渲染列表，
 // 表现就是日志刷屏 + 动画不断重载。setModpack 里加了同路径守卫。
@@ -443,7 +521,9 @@ checkAsync('重复定位同一文件夹不做反应', async () => {
 });
 
 (async () => {
-  await Promise.all(asyncChecks);
+  // 串行跑：这些检查会临时替换 window.pulses / Log 等全局，
+  // 并发跑会互相踩，报出来的错对不上真实原因。
+  for (const c of asyncChecks) await c();
 
   console.log('\n' + '='.repeat(52));
   if (failures.length) {
