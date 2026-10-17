@@ -53,11 +53,10 @@ img { display: block; max-width: 100%; }
 /* logo 与进度条全部由 JS 用 WAAPI 驱动。
    原来用 CSS animation，从 HTML 解析那一刻就开始跑，
    等 WebView 窗口真正显示出来早就播完了 —— 看着就是「瞬间弹出」。 */
-:root { --splash-logo-w: 250px; }
-
 .splash {
   position: fixed; top: 36px; left: 0; right: 0; bottom: 0; z-index: 9999;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: flex-end; justify-content: flex-end;
+  padding: 22px;
   background: var(--bg-system);
   transition: opacity var(--d-slow) var(--spring-soft);
 }
@@ -66,19 +65,19 @@ img { display: block; max-width: 100%; }
 /* 中间那张小卡片：加载期间只有它，加载完才出主界面 */
 .splash-card {
   display: flex; flex-direction: column; align-items: center;
-  gap: 26px;
-  width: min(400px, 70vw);
-  padding: 34px 34px 32px;
-  border-radius: var(--r-group);
+  gap: 16px;
+  width: 280px;
+  padding: 20px 22px 18px;
+  border-radius: var(--r-card);
   background: var(--bg-grouped-2);
   border: 1px solid var(--glass-edge);
   box-shadow:
-    0 28px 80px rgba(0, 0, 0, 0.66),
+    0 18px 50px rgba(0, 0, 0, 0.60),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .splash-logo {
-  width: var(--splash-logo-w); height: auto;
+  width: 100%; height: auto;
   object-fit: contain;
   opacity: 0;                       /* JS 播放前不可见，避免闪一下 */
   will-change: transform, opacity;
@@ -86,7 +85,7 @@ img { display: block; max-width: 100%; }
 .splash-track {
   /* 与 Python 版 _BAR_WIDTH_RATIO = 0.78 对齐：宽度是 logo 的 78%，居中，
      绝不从 logo 两边探出去 */
-  width: calc(var(--splash-logo-w) * 0.78);
+  width: 78%;
   height: 3px;
   background: var(--bg-tertiary);
   border-radius: var(--r-pill);
@@ -165,8 +164,8 @@ img { display: block; max-width: 100%; }
 
 .brand {
   flex: 0 0 auto;
-  /* 上 10（原来 22，logo 太靠下）、下 24（给第一张卡留呼吸） */
-  padding: 10px 20px 24px;
+  /* 上 8（logo 抬高）、下 44（首张卡片再往下压一截） */
+  padding: 8px 20px 44px;
 }
 .brand img {
   width: 100%; height: auto; object-fit: contain;
