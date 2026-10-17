@@ -6,6 +6,26 @@ use std::fs;
 use std::path::Path;
 use tauri::{AppHandle, Emitter};
 
+/// 合并 `options.txt`：
+///   · 玩家原有的**所有键位行**（以 `key_` 开头）原样保留
+///   · 其余选项（FOV / 渲染距离 / GUI 缩放 / 音量…）全部用新包的
+///
+/// 原版键位和绝大多数模组键位都写在这一个文件里，行格式
+/// `key_key.forward:key.keyboard.w`；只要 `key_` 行不动，玩家的热键就一个不变。
+fn merge_options(old_text: &str, new_text: &str) -> String {
+    let mut out: Vec<String> = new_text
+        .lines()
+        .filter(|l| !l.starts_with("key_"))
+        .map(|l| l.to_string())
+        .collect();
+    for l in old_text.lines().filter(|l| l.starts_with("key_")) {
+        out.push(l.to_string());
+    }
+    let mut s = out.join("\n");
+    s.push('\n');
+    s
+}
+
 pub fn build_plan(diff: Value, _checked: Value, _strategies: Value,
                   old_root: &Path, new_root: &Path) -> Value {
     let mut tasks = Vec::new();
@@ -42,6 +62,10 @@ pub fn build_plan(diff: Value, _checked: Value, _strategies: Value,
     if let Some(deleted) = diff.get("deleted").and_then(|v| v.as_array()) {
         for f in deleted {
             if let Some(rel) = f.get("rel").and_then(|v| v.as_str()) {
+                // options.txt 是玩家本地文件，更新包里没有它也不许删
+                if rel == "options.txt" {
+                    continue;
+                }
                 tasks.push(json!({
                     "type": "delete",
                     "rel": rel,
@@ -87,7 +111,20 @@ pub async fn execute_plan(app: &AppHandle, plan: Value,
                 }
                 if let Ok(st) = fs::metadata(src) {
                     let size = st.len();
-                    if fs::copy(src, dst).is_ok() {
+                    let ok = if t.get("rel").and_then(|v| v.as_str()) == Some("options.txt") {
+                        // 合并而不是覆盖：键位留玩家的，画质用新包的
+                        let new_text = fs::read_to_string(src).unwrap_or_default();
+                        let old_text = fs::read_to_string(dst).unwrap_or_default();
+                        let body = if old_text.trim().is_empty() {
+                            new_text
+                        } else {
+                            merge_options(&old_text, &new_text)
+                        };
+                        fs::write(dst, body).is_ok()
+                    } else {
+                        fs::copy(src, dst).is_ok()
+                    };
+                    if ok {
                         moved_bytes += size;
                     }
                 }
