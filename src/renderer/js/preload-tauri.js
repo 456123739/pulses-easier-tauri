@@ -66,6 +66,7 @@ window.pulses = {
   pack: {
     readEntry:     (p, entry) => invoke('pack_read_entry', { path: p, entry }),
     export:        (opts) => invoke('pack_export', { opts }),
+    cleanExtract:  (p) => invoke('pack_clean_extract', { path: p }),
     onProgress:    (cb) => onEvent('pack:progress', cb),
     readSettings:  (p) => invoke('pack_read_entry', { path: p, entry: 'settings.json' }).then(parseJSON),
     readManifest:  (p) => invoke('pack_read_entry', { path: p, entry: 'manifest.json' }).then(parseJSON),
@@ -85,7 +86,8 @@ window.pulses = {
 
   // ── 差异比对 ──
   diff: {
-    packs: (oldRoot, newRoot) => invoke('diff_packs', { oldRoot, newRoot }),
+    // updatePack=true 表示 newRoot 是增量更新包（不产出「删除」）
+    packs: (oldRoot, newRoot, updatePack) => invoke('diff_packs', { oldRoot, newRoot, updatePack }),
   },
 
   // ── 系统对话框（Tauri v2 dialog 插件，走 JS 侧）──

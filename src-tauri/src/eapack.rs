@@ -18,6 +18,34 @@ pub async fn read_entry(zip_path: &Path, entry_name: &str) -> Option<String> {
     Some(text)
 }
 
+/// 把 zip 条目名净化成「解压目录内的相对路径」。
+///
+/// 返回 None 表示这个条目必须跳过。拦三类：
+///   · 绝对路径（`/etc/x`）和盘符（`C:\\x`）
+///   · 含 `..` 路径段（zip slip：`../../x` 能写到解压目录之外）
+///   · 净化后为空
+fn safe_entry_name(name: &str) -> Option<PathBuf> {
+    let n = name.replace('\\', "/");
+    if n.starts_with('/') || n.contains(':') {
+        return None;
+    }
+    let mut out = PathBuf::new();
+    for seg in n.split('/') {
+        if seg.is_empty() || seg == "." {
+            continue;
+        }
+        if seg == ".." {
+            return None;
+        }
+        out.push(seg);
+    }
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
 /// 解压 zip 到目录
 pub async fn unzip(zip_path: &Path, dest_dir: &Path) -> Value {
     let file = match fs::File::open(zip_path) {
@@ -31,6 +59,7 @@ pub async fn unzip(zip_path: &Path, dest_dir: &Path) -> Value {
 
     let _ = fs::create_dir_all(dest_dir);
     let mut count = 0usize;
+    let mut skipped = 0usize;
 
     for i in 0..archive.len() {
         let mut entry = match archive.by_index(i) {
@@ -38,7 +67,14 @@ pub async fn unzip(zip_path: &Path, dest_dir: &Path) -> Value {
             Err(_) => continue,
         };
         let name = entry.name().to_string();
-        let outpath = dest_dir.join(&name);
+        // 路径净化：不干净的条目直接跳过，绝不写到解压目录之外
+        let outpath = match safe_entry_name(&name) {
+            Some(rel) => dest_dir.join(rel),
+            None => {
+                skipped += 1;
+                continue;
+            }
+        };
 
         if entry.is_dir() {
             let _ = fs::create_dir_all(&outpath);
@@ -55,7 +91,7 @@ pub async fn unzip(zip_path: &Path, dest_dir: &Path) -> Value {
         }
     }
 
-    json!({"ok": true, "files": count})
+    json!({"ok": true, "files": count, "skipped": skipped})
 }
 
 /// 读取整合包信息
@@ -190,4 +226,26 @@ pub async fn export(app: &AppHandle, opts: Value) -> Value {
     let size = fs::metadata(&output).map(|m| m.len()).unwrap_or(0);
     let _ = app.emit("pack:progress", json!({"done": true, "path": &output}));
     json!({"ok": true, "path": output, "size": size})
+}
+
+/// 删除更新包的解压目录。
+///
+/// 只允许删名字以 `_pulses_extract` 结尾的目录 —— 防止被当成通用删目录接口。
+/// 解压前先删一次（否则上一次的残留文件会被当成「新增」拷进玩家整合包），
+/// 更新成功后再删一次（不占磁盘）。
+pub fn clean_extract(path: &Path) -> Value {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if !name.ends_with("_pulses_extract") {
+        return json!({"ok": false, "msg": "不是解压目录"});
+    }
+    if !path.exists() {
+        return json!({"ok": true, "removed": false});
+    }
+    match fs::remove_dir_all(path) {
+        Ok(_) => json!({"ok": true, "removed": true}),
+        Err(e) => json!({"ok": false, "msg": e.to_string()}),
+    }
 }

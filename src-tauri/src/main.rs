@@ -38,6 +38,7 @@ fn main() {
             commands::dl_cancel,
             commands::pack_read_entry,
             commands::pack_export,
+            commands::pack_clean_extract,
             commands::fs_read_dir,
             commands::fs_stat,
             commands::fs_exists,

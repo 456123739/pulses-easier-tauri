@@ -143,6 +143,8 @@ const Player = {
 
     // 解压 → 比对
     const out = packPath.replace(/\.[^.]+$/, '') + '_pulses_extract';
+    // 解压前先清掉上一次的残留 —— 否则旧文件会被当成「新增」拷进玩家整合包
+    try { await window.pulses.pack.cleanExtract(out); } catch (_) { /* 忽略 */ }
     Log.debug('解压更新包…');
     const unzip = await window.pulses.files.unzip(packPath, out);
     if (!unzip || !unzip.ok) {
@@ -161,7 +163,8 @@ const Player = {
     this.state.extractedDir = root;
 
     Log.debug('比对差异…');
-    const diff = await window.pulses.diff.packs(this.state.modpackPath, root);
+    // 更新包是增量的：旧包里没被带到的文件不能判删除
+    const diff = await window.pulses.diff.packs(this.state.modpackPath, root, true);
     this.state.diff = diff;
 
     const nAdd = (diff.added || []).length;
@@ -333,6 +336,9 @@ const Player = {
         ptext.textContent = '更新完成 ✓';
         Log.ok(`更新完成：${res.done} 个文件已处理`);
         App.setStatus('更新完成');
+
+        // 解压目录用完就删，不占磁盘
+        try { await window.pulses.pack.cleanExtract(root); } catch (_) { /* 忽略 */ }
 
         // 回到「请拖入下一个更新包」
         // 取元素必须判空：之前 .drop-sub 在 HTML 里根本不存在，

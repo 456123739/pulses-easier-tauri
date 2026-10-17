@@ -32,6 +32,18 @@ const LOCAL_ONLY_DIRS: &[&str] = &[
     "screenshots",
 ];
 
+/// 更新包**自身**的元数据（导出时写进去的），不是整合包内容。
+/// 只在「这一侧是增量更新包」时才排除 —— 玩家的完整整合包可能自带
+/// CurseForge 的 manifest.json，那是真内容，不能动。
+const PACK_META_FILES: &[&str] = &[
+    "manifest.json",
+    "settings.json",
+    "hashes.json",
+    "strategies.json",
+    "whitelist.json",
+    "CHANGELOG.md",
+];
+
 /// rel 是包根相对的 posix 路径。
 fn is_local_only(rel: &str) -> bool {
     let top = rel.split('/').next().unwrap_or("");
@@ -42,7 +54,7 @@ fn is_local_only(rel: &str) -> bool {
     !rel.contains('/') && LOCAL_ONLY_FILES.contains(&rel)
 }
 
-fn folder_manifest(dir: &Path) -> Vec<Entry> {
+fn folder_manifest(dir: &Path, is_update_pack: bool) -> Vec<Entry> {
     if !dir.exists() {
         return Vec::new();
     }
@@ -64,6 +76,10 @@ fn folder_manifest(dir: &Path) -> Vec<Entry> {
         if is_local_only(&rel) {
             continue;
         }
+        // 更新包自己的元数据也不参与，免得被当成内容复制进玩家目录
+        if is_update_pack && !rel.contains('/') && PACK_META_FILES.contains(&rel.as_str()) {
+            continue;
+        }
         let md = entry.metadata().ok();
         let size = md.as_ref().map(|m| m.len()).unwrap_or(0);
         let mtime = md
@@ -76,9 +92,43 @@ fn folder_manifest(dir: &Path) -> Vec<Entry> {
     entries
 }
 
-pub fn diff_packs(old_root: &Path, new_root: &Path) -> Value {
-    let old_entries = folder_manifest(old_root);
-    let new_entries = folder_manifest(new_root);
+/// 文件内容的 sha1（只用于判等，不做安全用途）
+fn file_sha1(p: &Path) -> Option<String> {
+    use sha1::{Digest, Sha1};
+    use std::io::Read;
+    let mut f = std::fs::File::open(p).ok()?;
+    let mut h = Sha1::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = f.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Some(format!("{:x}", h.finalize()))
+}
+
+/// 两边内容是否一致。
+///
+/// **不能只比 mtime** —— 会双向误判：
+///   · 内容一样但 mtime 变了（解压/复制）→ 误判「修改」，每次都全量覆盖
+///   · 大小和 mtime 都一样但内容变了     → 漏判，永远不更新
+/// 先比大小（最便宜），大小相同才读内容算 sha1。
+fn same_content(a: &Path, b: &Path) -> bool {
+    match (file_sha1(a), file_sha1(b)) {
+        (Some(x), Some(y)) => x == y,
+        _ => false,
+    }
+}
+
+/// 差异比对。
+///
+/// `update_pack = true` 表示 new_root 是**增量更新包**（只带变更文件）。
+/// 这种情况下旧包里没被带到的文件**绝不能判删除** —— 否则玩家的整合包会被删空。
+pub fn diff_packs(old_root: &Path, new_root: &Path, update_pack: bool) -> Value {
+    let old_entries = folder_manifest(old_root, false);
+    let new_entries = folder_manifest(new_root, update_pack);
 
     let mut old_map: HashMap<String, &Entry> = HashMap::new();
     for e in &old_entries {
@@ -94,23 +144,42 @@ pub fn diff_packs(old_root: &Path, new_root: &Path) -> Value {
     let mut deleted = Vec::new();
     let mut unchanged = Vec::new();
 
-    for (rel, ne) in &new_map {
+    // 排序后再遍历：HashMap 的迭代顺序每次都不一样，
+    // 不排序的话变更列表每次刷新都在乱跳。
+    let mut new_keys: Vec<&String> = new_map.keys().collect();
+    new_keys.sort();
+
+    for rel in new_keys {
+        let ne = new_map[rel];
         match old_map.get(rel) {
             None => added.push(json!({"rel": rel, "size": ne.size})),
             Some(oe) => {
-                if oe.size != ne.size || oe.mtime != ne.mtime {
+                if oe.size != ne.size {
                     modified.push(json!({
                         "rel": rel, "size": ne.size, "oldSize": oe.size
                     }));
-                } else {
+                } else if same_content(&old_root.join(rel), &new_root.join(rel)) {
                     unchanged.push(json!({"rel": rel, "size": ne.size}));
+                } else {
+                    modified.push(json!({
+                        "rel": rel, "size": ne.size, "oldSize": oe.size
+                    }));
                 }
             }
         }
     }
-    for (rel, oe) in &old_map {
-        if !new_map.contains_key(rel) {
-            deleted.push(json!({"rel": rel, "size": oe.size}));
+
+    if !update_pack {
+        // 根目录散文件（options.txt / servers.dat 之类）永不判删除 ——
+        // 那是玩家的本地配置，更新包里没有不代表该删。
+        let mut old_keys: Vec<&String> = old_map
+            .keys()
+            .filter(|k| !new_map.contains_key(*k))
+            .filter(|k| k.contains('/'))
+            .collect();
+        old_keys.sort();
+        for rel in old_keys {
+            deleted.push(json!({"rel": rel, "size": old_map[rel].size}));
         }
     }
 
@@ -119,5 +188,6 @@ pub fn diff_packs(old_root: &Path, new_root: &Path) -> Value {
         "modified": modified,
         "deleted": deleted,
         "unchanged": unchanged,
+        "updatePack": update_pack,
     })
 }

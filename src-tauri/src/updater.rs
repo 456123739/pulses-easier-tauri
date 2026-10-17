@@ -89,6 +89,7 @@ pub async fn execute_plan(app: &AppHandle, plan: Value,
     let mut done = 0usize;
     let mut total_bytes = 0u64;
     let mut moved_bytes = 0u64;
+    let mut failed: Vec<Value> = Vec::new();
 
     for t in &tasks {
         let task_type = t.get("type").and_then(|v| v.as_str()).unwrap_or("");
@@ -126,12 +127,20 @@ pub async fn execute_plan(app: &AppHandle, plan: Value,
                     };
                     if ok {
                         moved_bytes += size;
+                    } else if let Some(rel) = t.get("rel").and_then(|v| v.as_str()) {
+                        failed.push(json!({"rel": rel, "error": "写入失败"}));
                     }
+                } else if let Some(rel) = t.get("rel").and_then(|v| v.as_str()) {
+                    failed.push(json!({"rel": rel, "error": "源文件不存在"}));
                 }
             }
             "delete" => {
                 let dst = t.get("dst").and_then(|v| v.as_str()).unwrap_or("");
-                let _ = fs::remove_file(dst);
+                if fs::remove_file(dst).is_err() && Path::new(dst).exists() {
+                    if let Some(rel) = t.get("rel").and_then(|v| v.as_str()) {
+                        failed.push(json!({"rel": rel, "error": "删除失败"}));
+                    }
+                }
             }
             _ => {}
         }
@@ -152,7 +161,8 @@ pub async fn execute_plan(app: &AppHandle, plan: Value,
         }
     }
 
-    json!({"ok": true, "done": done, "total": total})
+    // ok 必须反映真实结果：全部失败也报 true 的话，界面会显示「更新完成 ✓」
+    json!({"ok": failed.is_empty(), "done": done, "total": total, "failed": failed})
 }
 
 pub fn verify(plan: &Value, _old_root: &Path, _new_root: &Path) -> Value {

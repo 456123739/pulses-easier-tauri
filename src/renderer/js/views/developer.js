@@ -85,8 +85,9 @@ const Developer = {
 
     try {
       Log.debug('比对两个版本…');
+      // 开发者比的是两个**完整**目录，允许产出删除项
       const diff = await window.pulses.diff.packs(this.state.oldPath,
-                                                  this.state.newPath);
+                                                  this.state.newPath, false);
       this.state.diff = diff;
 
       const nAdd = (diff.added || []).length;

@@ -94,8 +94,13 @@ pub fn recent_clear() -> Vec<String> {
 
 // ── 比对 ──
 #[tauri::command]
-pub fn diff_packs(old_root: String, new_root: String) -> Value {
-    differ::diff_packs(&PathBuf::from(&old_root), &PathBuf::from(&new_root))
+pub fn diff_packs(old_root: String, new_root: String, update_pack: Option<bool>) -> Value {
+    // update_pack=true：new_root 是增量更新包，旧包里没带到的文件不能判删除
+    differ::diff_packs(
+        &PathBuf::from(&old_root),
+        &PathBuf::from(&new_root),
+        update_pack.unwrap_or(false),
+    )
 }
 
 // ── 更新 ──
@@ -166,6 +171,11 @@ pub async fn pack_read_entry(
     entry: String,
 ) -> Result<Option<String>, String> {
     Ok(eapack::read_entry(&PathBuf::from(&path), &entry).await)
+}
+
+#[tauri::command]
+pub fn pack_clean_extract(path: String) -> Value {
+    eapack::clean_extract(&PathBuf::from(&path))
 }
 
 #[tauri::command]
