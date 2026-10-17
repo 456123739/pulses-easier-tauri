@@ -188,6 +188,15 @@ const Installer = {
       // ── 状态 ──
       let javaPath = '';
       let needMajor = 0;
+      // 找 Java 要起子进程（每份 100~300ms），本机装了七八份时很慢，
+      // 所以整块面板只查一次，装完新 Java 再往缓存里塞
+      let javaList = null;
+      const getJavaList = async () => {
+        if (javaList) return javaList;
+        try { javaList = (await window.pulses.mc.javaList()).list || []; }
+        catch (_) { javaList = []; }
+        return javaList;
+      };
 
       const refreshJava = async () => {
         javaBtn.classList.add('is-hidden');
@@ -205,8 +214,7 @@ const Installer = {
           needMajor = (await window.pulses.mc.javaNeed(mcVal)).major || 17;
         } catch (_) { needMajor = 17; }
 
-        let list = [];
-        try { list = (await window.pulses.mc.javaList()).list || []; } catch (_) {}
+        const list = await getJavaList();
 
         // 刚好够用的最低版本优先：老 Forge 安装器在 Java 21 上会挂
         const ok = list.filter(j => j.major >= needMajor).sort((a, b) => a.major - b.major)[0];
@@ -236,6 +244,7 @@ const Installer = {
           const r = await window.pulses.mc.javaInstall(needMajor);
           if (r && r.ok) {
             javaPath = r.java.path;
+            if (javaList) javaList.push(r.java);
             javaVal.textContent = `Java ${r.java.major} 已就绪`;
             javaBtn.classList.add('is-hidden');
             Log.ok(`已安装 Java ${r.java.major}：${r.java.path}`);

@@ -501,18 +501,33 @@ impl DiskKind {
 
 #[cfg(windows)]
 pub fn detect_disk_kind(path: &Path) -> DiskKind {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        GetDriveTypeW, DRIVE_FIXED, DRIVE_REMOTE, DRIVE_REMOVABLE,
-    };
-    // 取盘符：C:\...
+    use windows_sys::Win32::Storage::FileSystem::GetDriveTypeW;
+
+    // windows-sys 0.60 把这几个常量挪到了 Win32::System::WindowsProgramming，
+    // 为四个数字多开一个 feature 不值当，按 Win32 文档直接取值。
+    const DRIVE_REMOVABLE: u32 = 2;
+    const DRIVE_FIXED: u32 = 3;
+    const DRIVE_REMOTE: u32 = 4;
+
     let s = path.to_string_lossy().to_string();
-    let mut drive: Vec<u16> = s.chars().take(3).collect::<String>().encode_utf16().collect();
-    while drive.len() < 4 {
-        drive.push('\\' as u16);
-    }
-    drive.push(0);
-    let t = unsafe { GetDriveTypeW(drive.as_ptr()) };
+    let target = if s.len() >= 2 && s.as_bytes().get(1) == Some(&b':') {
+        // 盘符：C:\...
+        format!("{}\\", &s[..2])
+    } else if let Some(rest) = s.strip_prefix(r"\\") {
+        // UNC：\\server\share\... → \\server\share
+        let parts: Vec<&str> = rest.split('\\').filter(|x| !x.is_empty()).collect();
+        if parts.len() >= 2 {
+            format!(r"\\{}\{}", parts[0], parts[1])
+        } else {
+            s.clone()
+        }
+    } else {
+        s.clone()
+    };
+
+    let mut w: Vec<u16> = target.encode_utf16().collect();
+    w.push(0);
+    let t = unsafe { GetDriveTypeW(w.as_ptr()) };
     if t == DRIVE_REMOTE {
         DiskKind::Network
     } else if t == DRIVE_REMOVABLE {
