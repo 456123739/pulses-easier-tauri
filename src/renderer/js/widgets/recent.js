@@ -128,5 +128,11 @@ function baseName(p) {
   return parts.length ? parts[parts.length - 1] : String(p);
 }
 
+// 拼路径：沿用原路径的分隔符（Windows 是 \，其它是 /）
+function joinPath(dir, name) {
+  const sep = String(dir).includes('\\') ? '\\' : '/';
+  return String(dir).replace(/[\\/]+$/, '') + sep + name;
+}
+
 window.Recent = Recent;
 window.Marquee = Marquee;

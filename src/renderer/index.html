@@ -11,7 +11,7 @@
   <!-- 启动页 -->
   <div id="splash" class="splash">
     <img class="splash-logo" src="assets/logo.png" alt="Pulses Easier">
-    <div class="splash-track"><i></i></div>
+    <div class="splash-track"><i id="splash-fill"></i></div>
   </div>
 
   <!-- ══ 自定义标题栏（常驻，启动页也盖不住它）══ -->
@@ -34,12 +34,14 @@
 
     <!-- ══ 侧边栏 ══ -->
     <aside class="sidebar">
-      <div class="brand">
-        <img src="assets/logo.png" alt="Pulses Easier">
-        <span class="brand-sub">Pulses0 Studio</span>
-      </div>
-
       <div class="sb-scroll">
+        <!-- brand 放进滚动容器里做 sticky：列表滚上来会从它底下穿过，
+             头部这才真的是一块玻璃（否则后面没东西可模糊） -->
+        <div class="brand">
+          <img src="assets/logo.png" alt="Pulses Easier">
+          <span class="brand-sub">Pulses0 Studio</span>
+        </div>
+
         <section class="group">
           <div class="group-title">整合包</div>
           <div class="card">
@@ -135,6 +137,7 @@
             <div class="step-body">
               <div class="drop" id="drop-zone">
                 <span class="drop-main">拖入或选择</span>
+                <span class="drop-sub">更新包（.zip / .eapack）</span>
               </div>
               <div class="row-between">
                 <span class="pack-name" id="pack-name"></span>

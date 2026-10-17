@@ -6,7 +6,8 @@
 // 动画结束后释放高度（改回 auto），内容变化不会被截断。
 
 const Reveal = {
-  DUR: 420,
+  // 与 Python 版 Anim.TOGGLE_MS = 150 对齐
+  DUR: 150,
 
   isExpanded(el) {
     return el && !el.classList.contains('is-collapsed');

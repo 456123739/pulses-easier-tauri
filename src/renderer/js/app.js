@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、首选项、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.8.8';
+const BUILD_STAMP = 'build 0.8.9';
 
 const App = {
   identity: 'player',
@@ -31,8 +31,9 @@ const App = {
     // 整块滑动（像翻页），不是移一小段：
     //   切到开发者 → 整体往右滑走；切到玩家 → 整体往左滑走
     // 出场与入场用同样的时长与曲线 → 两块拼成一条连续带子一起移动。
+    // 与 Python 版 Anim.SWITCH_MS = 250 对齐
     const dir = (next === 'developer') ? 1 : -1;
-    const DUR = 460;
+    const DUR = 250;
 
     from.classList.remove('is-active');
     to.classList.add('is-active');
@@ -436,6 +437,92 @@ function bindShortcuts() {
   });
 }
 
+// ── 启动页 ──
+// 参数与 Python 版 app/ui/splash.py 顶部常量一一对应，改一个改另一个。
+const Splash = {
+  // ---- 伪进度参数（Python: _PROGRESS_CAP / _PROGRESS_TAU_MS / ...）----
+  CAP: 0.90,            // 启动期间最多走到这里，剩下的留给「真的完成了」
+  TAU_MS: 700,          // 时间常数：越小前段越快、后面越慢
+  RIPPLE: 0.005,        // 轻微呼吸（相对整条长度）
+  RIPPLE_MS: 420,       // 呼吸周期
+  RIPPLE_DECAY: 1500,
+  FINISH_MS: 260,       // 收尾补满的时长
+  FADE_MS: 420,         // logo 淡入
+
+  _raf: 0,
+  _t0: 0,
+  _p: 0,
+  _fill: null,
+  _started: false,
+
+  _set(p) {
+    this._p = p;
+    if (this._fill) this._fill.style.transform = `scaleX(${p})`;
+  },
+
+  // 与 Python progress_at() 同一个公式：
+  //   base   = cap * (1 - exp(-t / tau))
+  //   ripple = RIPPLE * sin(t / RIPPLE_MS * 2π) * exp(-t / RIPPLE_DECAY)
+  //   永远 < cap，到顶只可能来自 finish()
+  progressAt(ms) {
+    if (ms <= 0) return 0;
+    const base = this.CAP * (1 - Math.exp(-ms / this.TAU_MS));
+    const ripple = this.RIPPLE
+      * Math.sin(ms / this.RIPPLE_MS * Math.PI * 2)
+      * Math.exp(-ms / this.RIPPLE_DECAY);
+    return Math.max(0, Math.min(this.CAP, base + ripple));
+  },
+
+  play() {
+    if (this._started) return;
+    this._started = true;
+
+    const logo = document.querySelector('.splash-logo');
+    this._fill = document.getElementById('splash-fill');
+
+    // 双 rAF：等浏览器画完第一帧再开始，动画才不会被「窗口还没显示」吃掉
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      // Python 的 _fade_in() 是纯 alpha 0→1、_FADE_MS=420，不做位移缩放
+      if (logo) {
+        const a = Anim.play(logo,
+          [{ opacity: 0 }, { opacity: 1 }],
+          { duration: this.FADE_MS, easing: Anim.EASE, fill: 'both' });
+        // WAAPI 不可用时退化成直接可见，不能留个看不见的 logo
+        if (!a) logo.style.opacity = '1';
+      }
+      this._t0 = performance.now();
+      this._tick();
+    }));
+  },
+
+  _tick() {
+    this._set(this.progressAt(performance.now() - this._t0));
+    this._raf = requestAnimationFrame(() => this._tick());
+  },
+
+  // 真就绪：补满（_FINISH_MS）→ 停留一下 → 淡出
+  finish() {
+    cancelAnimationFrame(this._raf);
+    this._started = true;
+
+    const splash = document.getElementById('splash');
+    const fill = this._fill || document.getElementById('splash-fill');
+
+    if (fill) {
+      const a = Anim.play(fill,
+        [{ transform: `scaleX(${this._p})` }, { transform: 'scaleX(1)' }],
+        { duration: this.FINISH_MS, easing: 'cubic-bezier(0.33, 1, 0.68, 1)', fill: 'both' });
+      if (!a) fill.style.transform = 'scaleX(1)';
+    }
+
+    if (!splash) return;
+    const a = Anim.play(splash, [{ opacity: 1 }, { opacity: 0 }],
+      { duration: 300, delay: 220, easing: Anim.EASE, fill: 'both' });
+    splash.classList.add('is-out');
+    setTimeout(() => { splash.style.display = 'none'; }, a ? 560 : 0);
+  },
+};
+
 // ── 启动 ──
 // 设计原则：任何一步失败都不能把启动卡死。
 //   1. 每一步独立 try/catch，失败的记下来继续走
@@ -443,6 +530,9 @@ function bindShortcuts() {
 //   3. 失败原因写进日志与状态栏，方便定位
 async function boot() {
   const failures = [];
+
+  // 越早越好：让启动页的入场动画从「窗口可见」那一刻开始计时
+  try { Splash.play(); } catch (_) { /* 忽略 */ }
 
   const step = async (name, fn) => {
     try {
@@ -460,12 +550,8 @@ async function boot() {
     shown = true;
 
     try {
-      const splash = document.getElementById('splash');
       const appEl = document.getElementById('app');
-      if (splash) {
-        splash.classList.add('is-out');
-        setTimeout(() => { splash.style.display = 'none'; }, 340);
-      }
+      Splash.finish();
       if (appEl) appEl.classList.remove('is-hidden');
       document.querySelectorAll('.group').forEach((g, i) => {
         g.style.animation = `groupIn 420ms var(--ease-out) ${120 + i * 60}ms both`;
@@ -566,6 +652,7 @@ async function boot() {
 }
 
 window.App = App;
+window.Splash = Splash;
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', boot);

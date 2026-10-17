@@ -1,6 +1,44 @@
 // player.js — 玩家端（STEP 1 / STEP 2 / STEP 3）
 // 对应 Python: app/ui/player_view.py + sidebar 的定位区
 
+// ── 剥掉更新包多余的顶层文件夹 ──
+// 7-Zip、资源管理器「压缩到文件夹」都会多套一层（PackName/mods/...）。
+// 不剥的话两边路径完全没有交集，比对结果是
+//   「新增 N · 修改 0 · 删除 M」   ← 修改 0 就是特征
+// 然后 M 个玩家文件会被判成删除、真的删掉。
+//
+// 判定规则（宁可不动，不能乱剥）：
+//   · 目录里只有 1 个子目录、且没有其它文件
+//   · 这个子目录里确实有「整合包根该有的东西」
+// 这样单一个 mods/ 不会被误当成根。
+const PACK_ROOT_MARKERS = [
+  'mods', 'config', 'resourcepacks', 'shaderpacks',
+  'options.txt', 'manifest.json', 'instance.cfg', 'mmc-pack.json',
+];
+
+async function unwrapPackRoot(dir, depth = 0) {
+  if (depth >= 3) return dir;
+
+  let names = [];
+  try { names = await window.pulses.files.readDir(dir) || []; }
+  catch (_) { return dir; }
+  if (!Array.isArray(names) || names.length !== 1) return dir;
+
+  const child = joinPath(dir, names[0]);
+  let st = null;
+  try { st = await window.pulses.files.stat(child); }
+  catch (_) { return dir; }
+  if (!st || !st.isDir) return dir;
+
+  let inner = [];
+  try { inner = await window.pulses.files.readDir(child) || []; }
+  catch (_) { return dir; }
+  if (!Array.isArray(inner)) return dir;
+  if (!inner.some(n => PACK_ROOT_MARKERS.includes(n))) return dir;
+
+  return unwrapPackRoot(child, depth + 1);
+}
+
 const Player = {
   state: {
     modpackPath: null,
@@ -113,11 +151,17 @@ const Player = {
                           { level: 'error' });
       return;
     }
-    this.state.extractedDir = out;
     Log.debug(`解压完成（${unzip.files} 个条目）`);
 
+    // 剥掉多余的顶层文件夹（7-Zip 会多套一层，不剥会把玩家文件全判成删除）
+    const root = await unwrapPackRoot(out);
+    if (root !== out) {
+      Log.warn('更新包多套了一层目录，已自动剥到：' + baseName(root));
+    }
+    this.state.extractedDir = root;
+
     Log.debug('比对差异…');
-    const diff = await window.pulses.diff.packs(this.state.modpackPath, out);
+    const diff = await window.pulses.diff.packs(this.state.modpackPath, root);
     this.state.diff = diff;
 
     const nAdd = (diff.added || []).length;
@@ -239,6 +283,18 @@ const Player = {
 
   async startUpdate() {
     if (this.state.busy) return;
+
+    // 上一次更新成功后 clearPack() 会把 extractedDir 置空。
+    // 这时再点「重试」就会把 null 传给 Rust，报
+    //   invalid args `newRoot` ... invalid type: null, expected a string
+    const oldRoot = this.state.modpackPath;
+    const newRoot = this.state.extractedDir;
+    if (!oldRoot || !newRoot) {
+      Log.warn('更新包已清空，请重新拖入更新包');
+      App.setStatus('请先拖入更新包（STEP 2）');
+      return;
+    }
+
     this.state.busy = true;
     this._errors = [];
 
@@ -262,9 +318,6 @@ const Player = {
       ptext.textContent = `已处理 ${d.done}/${d.total}  ·  ${pct}%`;
     });
 
-    const oldRoot = this.state.modpackPath;
-    const newRoot = this.state.extractedDir;
-
     try {
       Log.debug('构建更新计划…');
       const plan = await window.pulses.update.buildPlan(
@@ -282,11 +335,15 @@ const Player = {
         App.setStatus('更新完成');
 
         // 回到「请拖入下一个更新包」
+        // 取元素必须判空：之前 .drop-sub 在 HTML 里根本不存在，
+        // querySelector 返回 null，赋值直接抛
+        //   TypeError: Cannot set properties of null (setting 'textContent')
         this.clearPack();
-        document.getElementById('drop-zone').querySelector('.drop-main')
-          .textContent = '本次更新已全部应用 ✓';
-        document.getElementById('drop-zone').querySelector('.drop-sub')
-          .textContent = '请拖入下一个更新包';
+        const dz = document.getElementById('drop-zone');
+        const dzMain = dz && dz.querySelector('.drop-main');
+        const dzSub = dz && dz.querySelector('.drop-sub');
+        if (dzMain) dzMain.textContent = '本次更新已全部应用 ✓';
+        if (dzSub) dzSub.textContent = '请拖入下一个更新包';
         setBtnLabel(btn, '已完成');
         btn.classList.add('is-hidden');
 
@@ -313,3 +370,4 @@ function firstLine(s) {
 }
 
 window.Player = Player;
+window.unwrapPackRoot = unwrapPackRoot;

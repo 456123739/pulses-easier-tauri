@@ -22,10 +22,10 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
-/* body 两行：标题栏（常驻）+ 内容 */
+/* body 一行：内容铺满，标题栏改为浮层（见 .titlebar） */
 body {
   display: grid;
-  grid-template-rows: 36px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 button, input, textarea { font: inherit; color: inherit; }
@@ -50,33 +50,43 @@ img { display: block; max-width: 100%; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.26); background-clip: content-box; }
 
 /* ════════════════ 启动页 ════════════════ */
+/* logo 与进度条全部由 JS 用 WAAPI 驱动。
+   原来用 CSS animation，从 HTML 解析那一刻就开始跑，
+   等 WebView 窗口真正显示出来早就播完了 —— 看着就是「瞬间弹出」。 */
+:root { --splash-logo-w: 250px; }
+
 .splash {
   position: fixed; top: 36px; left: 0; right: 0; bottom: 0; z-index: 9999;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  gap: 26px;
+  gap: 30px;
   background: var(--bg-system);
   transition: opacity var(--d-slow) var(--spring-soft);
 }
 .splash.is-out { opacity: 0; pointer-events: none; }
 .splash-logo {
-  width: 250px; height: auto;
+  width: var(--splash-logo-w); height: auto;
   object-fit: contain;
-  animation: softUp 600ms var(--spring-soft) both;
+  opacity: 0;                       /* JS 播放前不可见，避免闪一下 */
+  will-change: transform, opacity;
 }
 .splash-track {
-  width: 260px; height: 3px;
+  /* 与 Python 版 _BAR_WIDTH_RATIO = 0.78 对齐：宽度是 logo 的 78%，居中，
+     绝不从 logo 两边探出去 */
+  width: calc(var(--splash-logo-w) * 0.78);
+  height: 3px;
   background: var(--bg-tertiary);
   border-radius: var(--r-pill);
   overflow: hidden;
 }
 .splash-track i {
-  display: block; height: 100%; width: 0;
+  display: block; height: 100%; width: 100%;
   background: var(--accent);
   border-radius: var(--r-pill);
-  animation: barFill 1100ms var(--spring-soft) 180ms both;
+  transform: scaleX(0);             /* 用 transform 不用 width：不触发布局重排 */
+  transform-origin: left center;
+  will-change: transform;
 }
-@keyframes barFill { from { width: 0; } to { width: 100%; } }
 
 @keyframes softUp {
   from { opacity: 0; transform: translateY(12px); }
@@ -98,9 +108,13 @@ img { display: block; max-width: 100%; }
 }
 
 /* ════════════════ 侧边栏 ════════════════ */
-/* ── 自定义标题栏 ── */
+/* ── 自定义标题栏 ──
+   浮在内容之上（不再是独立的一行），这样侧栏列表往上滚的时候
+   会从它底下穿过去 —— backdrop-filter 才有东西可模糊。
+   下面的滚动容器用 padding-top 让内容起始位置避开它。 */
 .titlebar {
-  grid-column: 1; grid-row: 1;
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 36px; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 6px 0 16px;
   background: var(--bg-grouped-2);
@@ -157,7 +171,7 @@ img { display: block; max-width: 100%; }
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding: 0 14px 12px;
+  padding: 36px 14px 12px;         /* 顶部让出标题栏高度，内容从它底下滚过 */
   display: flex; flex-direction: column; gap: 22px;
 }
 
@@ -328,12 +342,15 @@ img { display: block; max-width: 100%; }
   background: var(--bg-fill-2);
   border-radius: 10px;
 }
+/* 指示器与 Python 版 SegmentedSwitch 对齐：
+   不是填充胶囊，是底部一条 3px 的强调色下划线，滑动过去。
+   Python: height=3, corner_radius=2, fg_color=ACCENT, 时长 SLIDER_MS=200 */
 .seg-pill {
-  position: absolute; top: 2px; left: 2px;
-  width: calc(50% - 2px); height: calc(100% - 4px);
-  border-radius: 8px;
-  background: #636366;
-  transition: transform var(--d-base) var(--spring);
+  position: absolute; left: 2px; bottom: 2px;
+  width: calc(50% - 2px); height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: transform 200ms var(--ease-out);
   pointer-events: none;
 }
 .seg-pill.is-right { transform: translateX(100%); }
@@ -352,6 +369,7 @@ img { display: block; max-width: 100%; }
   grid-column: 2; grid-row: 1;
   position: relative; min-width: 0; min-height: 0;
   overflow: hidden;
+  padding-top: 36px;               /* 让出浮层标题栏 */
   background: var(--bg-system);
 }
 
@@ -464,7 +482,9 @@ img { display: block; max-width: 100%; }
 
 /* ── 拖入区 ── */
 .drop {
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 5px;
   min-height: 96px;
   padding: 18px;
   border-radius: var(--r-ctrl);
@@ -484,6 +504,11 @@ img { display: block; max-width: 100%; }
 .drop-main {
   font-size: var(--t-subhead);
   color: var(--label-2);
+  text-align: center;
+}
+.drop-sub {
+  font-size: var(--t-caption);
+  color: var(--label-3);
   text-align: center;
 }
 
@@ -935,4 +960,117 @@ img { display: block; max-width: 100%; }
   line-height: 1.8;
   color: var(--label-3);
   overflow-wrap: anywhere;
+}
+
+/* ════════════════════════════════════════════════════════════
+   材质层 —— 玻璃
+   只给「浮在内容之上」的层用：标题栏 / 状态栏 / 侧栏头部 / 弹层。
+   卡片是内容本体，保持实色 —— 什么都糊会糊成一片，
+   那是廉价感，不是质感。
+   ════════════════════════════════════════════════════════════ */
+
+:root {
+  --glass-thin:  rgba(28, 28, 30, 0.66);
+  --glass-mid:   rgba(44, 44, 46, 0.74);
+  --glass-edge:  rgba(255, 255, 255, 0.075);
+  --glass-edge-b: rgba(255, 255, 255, 0.04);
+  --glass-blur:  blur(24px) saturate(180%);
+}
+
+/* 标题栏：顶部一条高光边，像玻璃的倒角 */
+.titlebar {
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-edge-b);
+}
+
+/* 状态栏：同材质，薄一档 */
+.statusbar {
+  background: var(--glass-thin);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-top: 1px solid var(--glass-edge);
+}
+
+/* 侧栏头部：sticky 在滚动容器顶部，列表从它底下穿过 —— 这才有东西可模糊。
+   负边距抵消 .sb-scroll 的左右内边距，让玻璃铺满整个侧栏宽度。 */
+.brand {
+  position: sticky; top: 36px; z-index: 3;   /* 贴在标题栏下沿 */
+  margin: 0 -14px 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(28, 28, 30, 0.94) 0%,
+    rgba(28, 28, 30, 0.78) 100%);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border-bottom: 1px solid var(--glass-edge-b);
+}
+
+/* 弹层再压一层质感：外圈极细高光 + 更深阴影 */
+.ov-card {
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+/* ════════════════════════════════════════════════════════════
+   动效层
+   原则：可交互元素一律有「按下 → 回弹」的物理反馈；
+        只动 transform / opacity / background，不触发布局。
+   ════════════════════════════════════════════════════════════ */
+
+/* ── 通用按压 ── */
+.tb-btn, .link-btn, .wl-chip, .pref-btn,
+.picker-dot, .picker-native, .row, .opt, .seg-btn {
+  transition: transform var(--d-fast) var(--spring),
+              background var(--d-fast) var(--ease-out),
+              color var(--d-fast) var(--ease-out),
+              opacity var(--d-fast) var(--ease-out);
+}
+.tb-btn:active,
+.link-btn:active,
+.wl-chip:active,
+.pref-btn:active,
+.picker-dot:active { transform: scale(0.92); }
+
+.row:active,
+.opt:active { transform: scale(0.985); }
+
+/* ── 侧栏行：hover 时箭头跟着走一小步 ── */
+.chev {
+  transition: transform var(--d-fast) var(--spring),
+              opacity var(--d-fast) var(--ease-out);
+}
+.row:hover .chev { transform: translateX(3px); opacity: 1; }
+
+/* ── 开关：弹簧回弹 ── */
+.pref-switch {
+  transition: background var(--d-base) var(--ease-out);
+}
+.pref-switch::after {
+  transition: transform var(--d-base) var(--spring),
+              box-shadow var(--d-base) var(--ease-out);
+}
+.pref-switch:active::after { transform: scale(0.9); }
+.pref-switch.is-on:active::after {
+  transform: translateX(20px) scale(0.9);
+}
+
+/* ── 色块：hover 放大 + 外圈 ── */
+.picker-dot:hover {
+  transform: scale(1.14);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22);
+}
+
+/* ── 白名单条目：hover 轻微抬起 ── */
+.wl-chip:hover { transform: translateY(-1px); }
+
+/* ── 输入框：聚焦时边框渐变（不是硬切）── */
+.picker-input, .md-input, .pref-btn {
+  transition: border-color var(--d-base) var(--ease-out),
+              background var(--d-base) var(--ease-out),
+              color var(--d-base) var(--ease-out);
 }

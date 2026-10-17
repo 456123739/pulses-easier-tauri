@@ -69,7 +69,7 @@
   --ease-in:     cubic-bezier(0.55, 0.00, 1.00, 0.45);
 
   /* ── iOS 时长 ── */
-  --d-fast:   160ms;
+  --d-fast:   150ms;
   --d-base:   250ms;
   --d-slow:   350ms;
   --d-enter:  450ms;
