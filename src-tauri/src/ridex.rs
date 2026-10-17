@@ -342,6 +342,11 @@ impl Progress {
         self.done.store(n, Ordering::SeqCst);
     }
 
+    /// 已完成（不含在途分片）
+    pub fn done_value(&self) -> u64 {
+        self.done.load(Ordering::SeqCst)
+    }
+
     pub fn total(&self) -> u64 {
         self.total
     }
@@ -556,7 +561,7 @@ fn stream_once(
 }
 
 /// 多源 + 重试：把任务下到 `.part`，成功后 rename 成目标文件。
-pub fn download_one(task: &DownloadTask, opts: &Options, cancel: &AtomicBool) -> DownloadResult {
+pub fn download_one(task: &DownloadTask, opts: &Options, cancel: std::sync::Arc<AtomicBool>) -> DownloadResult {
     let target = task.target_dir.join(&task.name);
     let part = {
         let mut s = target.as_os_str().to_os_string();
@@ -586,6 +591,30 @@ pub fn download_one(task: &DownloadTask, opts: &Options, cancel: &AtomicBool) ->
     let mut network_bytes = 0u64;
     let mut last_error = String::new();
 
+    // 收尾：校验 → rename → 返回结果
+    let finish = |part: &Path, network_bytes: u64| -> Result<DownloadResult, String> {
+        let (ok, why) = verify(part, task);
+        if !ok {
+            let _ = fs::remove_file(part);
+            drop_ranges(part);
+            return Err(why);
+        }
+        if fs::rename(part, &target).is_err() {
+            let _ = fs::copy(part, &target);
+            let _ = fs::remove_file(part);
+        }
+        drop_ranges(part);
+        let size = fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+        Ok(DownloadResult {
+            name: task.name.clone(),
+            path: target.to_string_lossy().to_string(),
+            size,
+            ok: true,
+            error: String::new(),
+            bytes: network_bytes,
+        })
+    };
+
     // G1：每个候选 URL 独立跑完整套重试，一个不行换下一个
     for url in &task.urls {
         if cancel.load(Ordering::SeqCst) {
@@ -599,11 +628,12 @@ pub fn download_one(task: &DownloadTask, opts: &Options, cancel: &AtomicBool) ->
             (Vec::new(), 0)
         };
         if meta_total > 0 && total_known > 0 && meta_total != total_known {
-            // 大小变了：旧 part 作废
             ranges.clear();
             let _ = fs::remove_file(&part);
             drop_ranges(&part);
         }
+
+        // ── 第一阶段：单连接 ──
         let mut start = if opts.part_meta_enabled {
             covered_upto(&ranges)
         } else {
@@ -615,74 +645,90 @@ pub fn download_one(task: &DownloadTask, opts: &Options, cancel: &AtomicBool) ->
             drop_ranges(&part);
         }
 
-        let mut file = match ensure_part_size(&part, total_known) {
-            Ok(f) => f,
-            Err(e) => return fail(format!("建不了临时文件：{e}")),
-        };
-
-        let attempts = opts.retry_same_url + 1;
-        for attempt in 0..attempts {
-            if cancel.load(Ordering::SeqCst) {
-                return fail("已取消".to_string());
-            }
-            let progress = Progress::new(total_known);
-            match stream_once(&client, url, &mut file, start, None, None, cancel) {
-                Attempt::Done(n) => {
-                    network_bytes += n;
-                    let now_end = start + n;
-                    if total_known > 0 && now_end != total_known {
-                        // 少了：记下已确认前缀，下次接着下
-                        if opts.part_meta_enabled {
-                            ranges = merge_ranges(vec![(0, now_end)]);
-                            save_ranges(&part, &ranges, total_known);
-                        }
-                        start = now_end;
-                        continue;
-                    }
-                    let _ = file.sync_all();
-                    drop(file);
-                    let (ok, why) = verify(&part, task);
-                    if ok {
-                        if fs::rename(&part, &target).is_err() {
-                            let _ = fs::copy(&part, &target);
-                            let _ = fs::remove_file(&part);
-                        }
-                        drop_ranges(&part);
-                        let size = fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
-                        return DownloadResult {
-                            name: task.name.clone(),
-                            path: target.to_string_lossy().to_string(),
-                            size,
-                            ok: true,
-                            error: String::new(),
-                            bytes: network_bytes,
-                        };
-                    }
-                    // 内容不对：整个 part 作废重来
-                    let _ = fs::remove_file(&part);
-                    drop_ranges(&part);
-                    start = 0;
-                    file = match ensure_part_size(&part, total_known) {
-                        Ok(f) => f,
-                        Err(e) => return fail(format!("建不了临时文件：{e}")),
-                    };
-                    let _ = progress;
-                    if attempt + 1 >= attempts {
-                        return fail(why);
-                    }
-                    backoff(opts.retry_backoff_ms, attempt);
+        if let Ok(mut file) = ensure_part_size(&part, total_known) {
+            let attempts = opts.retry_same_url + 1;
+            for attempt in 0..attempts {
+                if cancel.load(Ordering::SeqCst) {
+                    return fail("已取消".to_string());
                 }
-                Attempt::Retry(msg) => {
-                    if attempt + 1 >= attempts {
-                        // 这个源用尽，换下一个
-                        let _ = msg;
+                match stream_once(&client, url, &mut file, start, None, None, &cancel) {
+                    Attempt::Done(n) => {
+                        network_bytes += n;
+                        let now_end = start + n;
+                        if total_known > 0 && now_end != total_known {
+                            if opts.part_meta_enabled {
+                                ranges = merge_ranges(vec![(0, now_end)]);
+                                save_ranges(&part, &ranges, total_known);
+                            }
+                            start = now_end;
+                            let _ = file.seek(SeekFrom::Start(start));
+                            continue;
+                        }
+                        let _ = file.sync_all();
+                        drop(file);
+                        match finish(&part, network_bytes) {
+                            Ok(r) => return r,
+                            Err(why) => {
+                                last_error = why;
+                                break;
+                            }
+                        }
+                    }
+                    Attempt::Retry(msg) => {
+                        last_error = msg;
+                        if attempt + 1 >= attempts {
+                            break;
+                        }
+                        backoff(opts.retry_backoff_ms, attempt);
+                    }
+                    Attempt::Dead(msg) => {
+                        last_error = msg;
                         break;
                     }
-                    backoff(opts.retry_backoff_ms, attempt);
                 }
-                Attempt::Dead(msg) => {
-                    last_error = msg;
-                    break; // 404/403：这个源彻底没戏
+            }
+        }
+
+        if cancel.load(Ordering::SeqCst) {
+            return fail("已取消".to_string());
+        }
+
+        // 404/403 是「这个源彻底没戏」，别再浪费请求试分片
+        if last_error.starts_with("HTTP 4") {
+            continue;
+        }
+
+        // ── 第二阶段：分片（B1：单连接不行才分） ──
+        let total = if total_known > 0 {
+            Some(total_known)
+        } else {
+            probe_size(&client, url)
+        };
+        if let Some(total) = total {
+            if total > 0 && opts.part_threads > 1 {
+                let (done_ranges, _) = if opts.part_meta_enabled {
+                    load_ranges(&part)
+                } else {
+                    (Vec::new(), 0)
+                };
+                match download_multi(
+                    &client, url, &part, total, done_ranges, opts, cancel.clone(),
+                ) {
+                    Ok(n) => {
+                        network_bytes += n;
+                        if opts.part_meta_enabled {
+                            save_ranges(&part, &[(0, total)], total);
+                        }
+                        match finish(&part, network_bytes) {
+                            Ok(r) => return r,
+                            Err(why) => last_error = why,
+                        }
+                    }
+                    Err(e) => {
+                        last_error = e;
+                        let _ = fs::remove_file(&part);
+                        drop_ranges(&part);
+                    }
                 }
             }
         }
@@ -693,6 +739,256 @@ pub fn download_one(task: &DownloadTask, opts: &Options, cancel: &AtomicBool) ->
     } else {
         format!("所有下载源都失败了（最后一个错误：{last_error}）")
     })
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 分片下载
+// ═══════════════════════════════════════════════════════════════
+
+/// 把 [0, total) 切成 n 段（半开区间）。太小的文件不分片。
+pub fn plan_parts(total: u64, threads: usize) -> Vec<(u64, u64)> {
+    if total == 0 {
+        return vec![(0, 0)];
+    }
+    let min_part = 256 * 1024u64; // 小于这个不分，分片开销不划算
+    let max_n = ((total / min_part).max(1) as usize).min(threads.max(1));
+    if max_n <= 1 {
+        return vec![(0, total)];
+    }
+    let chunk = total / max_n as u64;
+    let mut out = Vec::with_capacity(max_n);
+    let mut s = 0u64;
+    for i in 0..max_n {
+        let e = if i + 1 == max_n { total } else { s + chunk };
+        out.push((s, e));
+        s = e;
+    }
+    out
+}
+
+/// 探一下文件总大小：发 `Range: bytes=0-0`，从 `Content-Range` 的 `/N` 取。
+fn probe_size(client: &reqwest::blocking::Client, url: &str) -> Option<u64> {
+    let resp = client
+        .get(url)
+        .header(reqwest::header::RANGE, "bytes=0-0")
+        .send()
+        .ok()?;
+    if let Some(cr) = resp
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+    {
+        if let Some(total) = cr.rsplit('/').next().and_then(|x| x.trim().parse::<u64>().ok()) {
+            return Some(total);
+        }
+    }
+    // 服务器不支持 Range：退回到 Content-Length
+    resp.headers()
+        .get(reqwest::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+}
+
+/// 一个分片：从 url 拉 [s, e)，写到 part 的对应偏移。
+#[allow(unused_assignments)]
+fn fetch_part(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    part: &Path,
+    r: (u64, u64),
+    validate: bool,
+    cancel: &AtomicBool,
+    progress: Option<(&Progress, usize)>,
+) -> Attempt {
+    let (s, e) = r;
+    let mut req = client
+        .get(url)
+        .header(reqwest::header::RANGE, format!("bytes={}-{}", s, e.saturating_sub(1)));
+
+    // 每次重试都新建连接头，避免复用陈旧 keep-alive
+    req = req.header(reqwest::header::CONNECTION, "close");
+
+    let resp = match req.send() {
+        Ok(r) => r,
+        Err(err) => return Attempt::Retry(format!("分片请求失败：{err}")),
+    };
+
+    let status = resp.status();
+    if status.as_u16() != 206 {
+        // 服务器没按 Range 回，说明不支持分段 —— 交给上层换单连接
+        return Attempt::Retry(format!("分片要求 206，实际 {}", status.as_u16()));
+    }
+    if validate {
+        let cr = resp
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        // 形如 "bytes 0-199999/200000"：先去掉 /total 再拆 -
+        let ok = cr
+            .split_whitespace()
+            .nth(1)
+            .and_then(|x| x.split('/').next())
+            .and_then(|x| x.split_once('-'))
+            .map(|(a, b)| {
+                a.trim().parse::<u64>().ok() == Some(s)
+                    && b.trim().parse::<u64>().ok() == Some(e.saturating_sub(1))
+            })
+            .unwrap_or(false);
+        if !ok {
+            return Attempt::Retry(format!("Content-Range 不符：{cr}"));
+        }
+    }
+
+    let mut f = match OpenOptions::new().write(true).open(part) {
+        Ok(f) => f,
+        Err(err) => return Attempt::Retry(format!("打开 part 失败：{err}")),
+    };
+    if let Err(err) = f.seek(SeekFrom::Start(s)) {
+        return Attempt::Retry(format!("定位失败：{err}"));
+    }
+
+    let mut reader = resp;
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut got = 0u64;
+    let mut last = Instant::now();
+
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            return Attempt::Retry("已取消".to_string());
+        }
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                if let Err(err) = f.write_all(&buf[..n]) {
+                    return Attempt::Retry(format!("写入失败：{err}"));
+                }
+                got += n as u64;
+                last = Instant::now();
+                if let Some((p, id)) = progress {
+                    p.add_part(id, n as u64);
+                }
+            }
+            Err(err) => return Attempt::Retry(format!("读取出错：{err}")),
+        }
+        if last.elapsed().as_secs() > 30 {
+            return Attempt::Retry("分片读空闲超时".to_string());
+        }
+    }
+
+    if got != e - s {
+        return Attempt::Retry(format!("分片长度不符：{} != {}", got, e - s));
+    }
+    Attempt::Done(got)
+}
+
+/// 多分片把整个文件拉下来。返回读到的总字节数。
+#[allow(clippy::too_many_arguments)]
+fn download_multi(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    part: &Path,
+    total: u64,
+    done_ranges: Vec<(u64, u64)>,
+    opts: &Options,
+    cancel: std::sync::Arc<AtomicBool>,
+) -> Result<u64, String> {
+    let all = plan_parts(total, opts.part_threads);
+    let todo: Vec<(u64, u64)> = all
+        .iter()
+        .copied()
+        .filter(|r| !range_covered_any(*r, &done_ranges))
+        .collect();
+    if todo.is_empty() {
+        return Ok(0);
+    }
+
+    // 预分配：分片直接写偏移，不产生中间文件
+    ensure_part_size(part, total).map_err(|e| e.to_string())?;
+
+    let progress = Arc::new(Progress::new(total));
+    let done = Arc::new(Mutex::new(done_ranges));
+    let bytes = Arc::new(AtomicU64::new(0));
+    let err = Arc::new(Mutex::new(String::new()));
+
+    let mut handles = Vec::new();
+    for (id, r) in todo.into_iter().enumerate() {
+        let client = client.clone();
+        let url = url.to_string();
+        let part = part.to_path_buf();
+        let progress = progress.clone();
+        let done = done.clone();
+        let bytes = bytes.clone();
+        let err = err.clone();
+        let cancel_flag = cancel.clone();
+        let validate = opts.range_validate;
+        let attempts = opts.part_retry + 1;
+
+        handles.push(std::thread::spawn(move || {
+            let cancel = cancel_flag;
+            for a in 0..attempts {
+                match fetch_part(&client, &url, &part, r, validate, &cancel, Some((&progress, id))) {
+                    Attempt::Done(n) => {
+                        bytes.fetch_add(n, Ordering::SeqCst);
+                        let moved = progress.take_part(id);
+                        progress.set_done(progress.done_value() + moved);
+                        if let Ok(mut d) = done.lock() {
+                            *d = merge_ranges({
+                                let mut v = d.clone();
+                                v.push(r);
+                                v
+                            });
+                        }
+                        return;
+                    }
+                    Attempt::Retry(m) => {
+                        if a + 1 >= attempts {
+                            if let Ok(mut e) = err.lock() {
+                                if e.is_empty() {
+                                    *e = m;
+                                }
+                            }
+                            return;
+                        }
+                    }
+                    Attempt::Dead(m) => {
+                        if let Ok(mut e) = err.lock() {
+                            if e.is_empty() {
+                                *e = m;
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+        }));
+    }
+
+    for h in handles {
+        let _ = h.join();
+    }
+
+    if cancel.load(Ordering::SeqCst) {
+        return Err("已取消".to_string());
+    }
+    let e = err.lock().map(|g| g.clone()).unwrap_or_default();
+    if !e.is_empty() {
+        return Err(e);
+    }
+
+    // 校验：所有分片都覆盖到了
+    let d = done.lock().map(|g| g.clone()).unwrap_or_default();
+    let covered = covered_upto(&d);
+    if covered < total {
+        return Err(format!("分片没下全：{covered}/{total}"));
+    }
+
+    Ok(bytes.load(Ordering::SeqCst))
+}
+
+/// 某个区间是否被已有区间完整覆盖
+fn range_covered_any(r: (u64, u64), ranges: &[(u64, u64)]) -> bool {
+    ranges.iter().any(|(s, e)| *s <= r.0 && *e >= r.1)
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -743,7 +1039,7 @@ pub fn run_batch(
             let total_n = total;
             let tb = total_bytes;
             handles.push(std::thread::spawn(move || {
-                let r = download_one(&t, &opts_ref, &cancel_ref);
+                let r = download_one(&t, &opts_ref, cancel_ref.clone());
                 let n = done_c.fetch_add(1, Ordering::SeqCst) + 1;
                 moved_c.fetch_add(r.bytes, Ordering::SeqCst);
                 if let Some(cb) = &prog {
