@@ -111,6 +111,7 @@ img { display: block; max-width: 100%; }
   grid-template-columns: 252px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) 30px;
   width: 100%; height: 100%;
+  padding-top: 36px;              /* 让出浮层标题栏 */
   background: var(--bg-system);
   animation: appIn var(--d-enter) var(--spring-soft) both;
 }
@@ -153,13 +154,24 @@ img { display: block; max-width: 100%; }
 .tb-btn:hover { background: rgba(255,255,255,.08); color: var(--label); }
 .tb-close:hover { background: var(--red); color: #fff; }
 
+.sidebar:hover {
+  box-shadow:
+    0 18px 55px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
 .sidebar {
   grid-column: 1; grid-row: 1;
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0;
   overflow: hidden;              /* 关键：给内部滚动容器一个确定边界 */
+  margin: 8px 0 8px 8px;
+  border-radius: var(--r-group);
   background: var(--bg-grouped-2);
-  border-right: 1px solid var(--sep);
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.50),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: box-shadow 200ms var(--ease-out);
 }
 
 .brand {
@@ -186,7 +198,7 @@ img { display: block; max-width: 100%; }
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding: 36px 14px 12px;         /* 顶部让出标题栏高度，内容从它底下滚过 */
+  padding: 0 14px 12px;
   display: flex; flex-direction: column; gap: 22px;
 }
 
@@ -261,6 +273,9 @@ img { display: block; max-width: 100%; }
   color: var(--label-3);
   overflow-wrap: anywhere;
 }
+/* 没有备注内容时整块折叠 —— 否则那 10px 下内边距会把卡片撑高，
+   里面的文字看着就偏上了（「未定位」那张卡就是这个毛病） */
+.row-note:empty { display: none; }
 
 .link-btn {
   flex: 0 0 auto;
@@ -404,8 +419,7 @@ img { display: block; max-width: 100%; }
 .view {
   position: absolute; inset: 0;
   display: flex; gap: 16px;
-  /* 顶部 36px 让出浮层标题栏 + 原本的 18px 留白 */
-  padding: 54px 18px 18px;
+  padding: 18px;
   min-width: 0; min-height: 0;
   opacity: 0;
   pointer-events: none;
@@ -1023,7 +1037,7 @@ img { display: block; max-width: 100%; }
 /* 侧栏头部：sticky 在滚动容器顶部，列表从它底下穿过 —— 这才有东西可模糊。
    负边距抵消 .sb-scroll 的左右内边距，让玻璃铺满整个侧栏宽度。 */
 .brand {
-  position: sticky; top: 36px; z-index: 3;   /* 贴在标题栏下沿 */
+  position: sticky; top: 0; z-index: 3;
   margin: 0 -14px 0;
   background: linear-gradient(
     to bottom,

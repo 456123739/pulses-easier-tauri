@@ -1,6 +1,6 @@
 {
   "name": "pulses-easier",
-  "version": "0.9.3-beta",
+  "version": "0.9.4-beta",
   "description": "Pulses Easier — Minecraft 整合包更新器（Tauri 美化版）",
   "private": true,
   "scripts": {
