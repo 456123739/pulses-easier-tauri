@@ -8,17 +8,19 @@
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
+use tauri::Emitter;
 use tauri::AppHandle;
 
 use crate::db;
 use crate::differ;
-use crate::downloader;
+use crate::ridex;
 use crate::eapack;
 use crate::recent;
 use crate::updater;
 
-/// 下载取消标志（模块级 static：async 命令里不能借 State）
-static CANCEL: AtomicBool = AtomicBool::new(false);
+/// 下载取消标志。RideX 要 Arc 才能跨线程共享，所以这里存一份。
+static CANCEL: Mutex<Option<std::sync::Arc<AtomicBool>>> = Mutex::new(None);
 
 // ── 版本 ──
 #[tauri::command]
@@ -149,18 +151,43 @@ pub fn update_estimate(plan: Value, old_root: String) -> Value {
 
 // ── 下载 ──
 #[tauri::command]
-pub async fn dl_start(
-    app: AppHandle,
-    tasks: Value,
-    opts: Value,
-) -> Result<Value, String> {
-    CANCEL.store(false, Ordering::SeqCst);
-    Ok(downloader::start(&app, tasks, opts).await)
+pub async fn dl_start(app: AppHandle, tasks: Value, opts: Value) -> Result<Value, String> {
+    let flag = std::sync::Arc::new(AtomicBool::new(false));
+    if let Ok(mut g) = CANCEL.lock() {
+        *g = Some(flag.clone());
+    }
+
+    let default_dir = std::env::temp_dir();
+    let list = ridex::tasks_from_json(&tasks, &default_dir);
+    let o = ridex::Options::from_json(&opts);
+
+    // 进度事件（前端目前没监听，但引擎该发就发）
+    let app2 = app.clone();
+    let prog: ridex::ProgressCb = std::sync::Arc::new(
+        move |done, total, name, bytes, total_bytes| {
+            let _ = app2.emit(
+                "dl:progress",
+                serde_json::json!({
+                    "done": done, "total": total, "name": name,
+                    "bytes": bytes, "totalBytes": total_bytes,
+                }),
+            );
+        },
+    );
+
+    let batch = ridex::run_batch(list, &o, flag, Some(prog), None);
+    let out = ridex::batch_to_json(&batch);
+    let _ = app.emit("dl:done", &out);
+    Ok(out)
 }
 
 #[tauri::command]
 pub fn dl_cancel() -> bool {
-    CANCEL.store(true, Ordering::SeqCst);
+    if let Ok(g) = CANCEL.lock() {
+        if let Some(f) = g.as_ref() {
+            f.store(true, Ordering::SeqCst);
+        }
+    }
     true
 }
 

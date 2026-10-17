@@ -6,9 +6,9 @@
 mod commands;
 mod db;
 mod differ;
-mod downloader;
 mod eapack;
 mod recent;
+mod ridex;
 mod updater;
 
 fn main() {

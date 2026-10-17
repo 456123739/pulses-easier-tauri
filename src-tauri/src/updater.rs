@@ -75,7 +75,7 @@ pub fn build_plan(diff: Value, checked: Value, strategies: Value,
     let mut tasks = Vec::new();
     let mut skipped = 0usize;
 
-    let mut push_copy = |tasks: &mut Vec<Value>, rel: &str, size: u64| {
+    let push_copy = |tasks: &mut Vec<Value>, rel: &str, size: u64| {
         tasks.push(json!({
             "type": "copy",
             "rel": rel,

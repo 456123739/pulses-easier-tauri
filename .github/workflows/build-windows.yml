@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 版本号（如 0.10.0）
+        description: 版本号（如 0.10.1）
         required: false
-        default: "0.10.0"
+        default: "0.10.1"
   push:
     tags: ["v*"]
 
@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           $ver = "${{ github.ref_name }}".TrimStart("v")
-          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.10.0" }
+          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.10.1" }
           $out = "pulses-easier-$ver-portable-win64"
           New-Item -ItemType Directory -Force -Path "dist/$out" | Out-Null
           Copy-Item "src-tauri/target/release/pulses-easier.exe" "dist/$out/Pulses Easier.exe"
