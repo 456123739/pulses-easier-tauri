@@ -884,6 +884,14 @@ body.is-booting .titlebar { display: none; }
 }
 
 /* ════════════════ 设置（iOS grouped list）════════════════ */
+/* 面板里可点击的行（数据库 → 更改位置 / 清理缓存） */
+.pref-row-btn {
+  width: 100%; text-align: left; cursor: pointer;
+  transition: background var(--d-fast) var(--ease-out);
+}
+.pref-row-btn:hover { background: rgba(255, 255, 255, 0.05); }
+.pref-row-btn:active { background: rgba(255, 255, 255, 0.08); }
+
 .pref-row {
   display: flex; align-items: center; gap: 12px;
   min-height: 46px;

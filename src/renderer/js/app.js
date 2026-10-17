@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、数据库位置、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.9.6';
+const BUILD_STAMP = 'build 0.9.7';
 
 const App = {
   identity: 'player',
@@ -94,6 +94,54 @@ const App = {
     el.textContent = p || '未设置';
     el.title = p || '';
     try { if (wrap) Recent._startMarquee([[wrap, el]]); } catch (_) { /* 忽略 */ }
+  },
+
+  // ── 数据库（点侧栏弹出面板：清理缓存 / 更改位置）──
+  async openDbPanel() {
+    this.markNav('nav-db');
+
+    let dbPath = '';
+    try { dbPath = (await window.pulses.db.getPath()) || ''; } catch (_) {}
+
+    await Overlay.panel('数据库', (body, done) => {
+      const mkRow = (label, value, onClick) => {
+        const row = document.createElement('button');
+        row.className = 'pref-row pref-row-btn';
+
+        const main = document.createElement('div');
+        main.className = 'pref-main';
+        const l = document.createElement('div');
+        l.className = 'pref-label';
+        l.textContent = label;
+        main.appendChild(l);
+        row.appendChild(main);
+
+        if (value) {
+          const v = document.createElement('div');
+          v.className = 'pref-value';
+          v.textContent = value;
+          v.title = value;
+          row.appendChild(v);
+        }
+
+        const chev = document.createElement('span');
+        chev.className = 'chev';
+        chev.textContent = '›';
+        row.appendChild(chev);
+
+        row.addEventListener('click', () => {
+          if (done) done(null);        // 先关面板，再干活
+          setTimeout(onClick, 0);
+        });
+        return row;
+      };
+
+      // 更改位置：后面跟当前路径
+      body.appendChild(mkRow('更改位置', dbPath || '未设置',
+        () => App.changeDbLocation()));
+      // 清理缓存
+      body.appendChild(mkRow('清理缓存', '', () => App.cleanCache()));
+    });
   },
 
   // ── 数据库位置（原来在「设置」弹窗里，现在直接放侧边栏）──
@@ -491,7 +539,7 @@ async function boot() {
     nav('nav-pickpack', () => Player.pickPack());
     nav('nav-newpack',  () => Developer.pickNew());
     nav('nav-oldpack',  () => Developer.pickOld());
-    nav('nav-db',       () => App.changeDbLocation());
+    nav('nav-db',       () => App.openDbPanel());
   });
 
   await step('最近打开', async () => {
@@ -522,6 +570,25 @@ async function boot() {
     showMain();
   }, 1250);
 }
+
+// ── 窗口显示 ──
+// 窗口在 tauri.conf 里是 visible:false。透明窗口如果先显示再绘制，
+// 会看到一下"透明"（只有窗口没有内容）。所以等首帧画完再 show。
+(function showWindowWhenPainted() {
+  let done = false;
+  const show = () => {
+    if (done) return;
+    done = true;
+    try {
+      const W = window.__TAURI__ && window.__TAURI__.window;
+      if (W && typeof W.getCurrentWindow === 'function') {
+        W.getCurrentWindow().show();
+      }
+    } catch (_) { /* 忽略 */ }
+  };
+  requestAnimationFrame(() => requestAnimationFrame(show));
+  setTimeout(show, 1200);          // 兜底：万一 rAF 没跑
+})();
 
 window.App = App;
 window.Splash = Splash;
