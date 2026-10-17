@@ -34,6 +34,7 @@ window.pulses = {
     isValid:    (p) => invoke('db_is_valid', { path: p }),
     describe:   (p) => invoke('db_describe', { path: p }),
     migrate:    (src, dst, skip) => invoke('db_migrate', { src, dst, skip }),
+    clearCache: () => invoke('db_clear_cache'),
     onProgress: (cb) => onEvent('db:progress', cb),
   },
 

@@ -58,6 +58,11 @@ pub fn db_describe(path: String) -> Value {
 }
 
 #[tauri::command]
+pub fn db_clear_cache() -> Value {
+    db::clear_cache()
+}
+
+#[tauri::command]
 pub fn db_migrate(src: String, dst: String, skip: Option<Vec<String>>) -> Value {
     db::migrate(
         &PathBuf::from(&src),

@@ -174,6 +174,31 @@ pub fn describe(db_path: &Path) -> Value {
     })
 }
 
+/// 清理数据库的 `cache` 目录（下载缓存 / 模组侧信息）。
+/// 已应用的更新不受影响 —— 这里只是可重建的中间数据。
+pub fn clear_cache() -> Value {
+    let db_path = match get_db_path() {
+        Some(p) => PathBuf::from(p),
+        None => return json!({"ok": false, "msg": "还没有数据库"}),
+    };
+    let cache = db_path.join("cache");
+    if !cache.exists() {
+        return json!({"ok": true, "files": 0, "bytes": 0});
+    }
+
+    let mut files = 0u64;
+    let mut bytes = 0u64;
+    for entry in WalkDir::new(&cache).into_iter().flatten() {
+        if entry.file_type().is_file() {
+            files += 1;
+            bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+        }
+    }
+
+    let ok = fs::remove_dir_all(&cache).is_ok();
+    json!({"ok": ok, "files": files, "bytes": bytes})
+}
+
 pub fn migrate(src: &Path, dst: &Path, skip: Vec<String>) -> Value {
     let _ = fs::create_dir_all(dst.join("projects"));
     fn copy_dir(s: &Path, d: &Path, skip: &[String], depth: usize) -> Result<(), String> {

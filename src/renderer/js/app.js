@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、数据库位置、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.9.5';
+const BUILD_STAMP = 'build 0.9.6';
 
 const App = {
   identity: 'player',
@@ -155,8 +155,21 @@ const App = {
       + '已应用的更新不受影响。\n\n确定继续？',
       { confirmText: '清理', danger: true });
     if (!ok) return;
-    Log.warn('缓存清理将在后续版本接入（当前仅确认流程）');
-    this.setStatus('缓存清理：待接入');
+    let r = null;
+    try { r = await window.pulses.db.clearCache(); } catch (_) { /* 忽略 */ }
+    if (!r || !r.ok) {
+      Log.error('清理缓存失败');
+      this.setStatus('清理缓存失败');
+      return;
+    }
+    const mb = (r.bytes / 1048576).toFixed(1);
+    if (r.files) {
+      Log.ok(`缓存已清理：${r.files} 个文件，释放 ${mb} MB`);
+      this.setStatus(`缓存已清理（${mb} MB）`);
+    } else {
+      Log.debug('没有缓存需要清理');
+      this.setStatus('没有缓存需要清理');
+    }
   },
 
   // ── 白名单（在开发者端右面板左下角）──

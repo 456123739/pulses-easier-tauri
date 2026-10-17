@@ -24,6 +24,7 @@ fn main() {
             commands::db_is_valid,
             commands::db_describe,
             commands::db_migrate,
+            commands::db_clear_cache,
             commands::recent_load,
             commands::recent_add,
             commands::recent_remove,
