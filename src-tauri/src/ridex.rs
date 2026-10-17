@@ -56,6 +56,8 @@ pub struct Options {
     pub range_validate: bool,
     /// 用 `.part.meta` 记录可信区间（关掉就退回旧行为，危险）
     pub part_meta_enabled: bool,
+    /// 小于这个大小就不分片。几千个几 KB 的资源文件分片纯属浪费
+    pub min_part_size: u64,
     pub hash_algo: String,
 }
 
@@ -75,6 +77,7 @@ impl Default for Options {
             part_retry: 1,
             range_validate: true,
             part_meta_enabled: true,
+            min_part_size: 1_048_576,
             hash_algo: "sha1".to_string(),
         }
     }
@@ -103,6 +106,9 @@ impl Options {
         }
         if let Some(b) = v.get("part_meta_enabled").and_then(|x| x.as_u64()) {
             o.part_meta_enabled = b != 0;
+        }
+        if let Some(b) = v.get("min_part_size").and_then(|x| x.as_u64()) {
+            o.min_part_size = b;
         }
         if let Some(a) = v.get("hash_algo").and_then(|x| x.as_str()) {
             if !a.is_empty() {
@@ -418,6 +424,156 @@ pub fn verify(target: &Path, task: &DownloadTask) -> (bool, String) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 速度窗口：连续一段时间低于阈值就判「这条连接没戏」
+// （Python 版 B2：连续 3 秒 < 20 KB/s 就移出多线程槽位）
+// ═══════════════════════════════════════════════════════════════
+
+pub struct SpeedWindow {
+    window: Duration,
+    min_bytes_per_sec: f64,
+    start: Instant,
+    last_bytes: u64,
+    last_ts: Instant,
+}
+
+impl SpeedWindow {
+    pub fn new(window_secs: u64, min_bytes_per_sec: f64) -> Self {
+        let now = Instant::now();
+        Self {
+            window: Duration::from_secs(window_secs.max(1)),
+            min_bytes_per_sec,
+            start: now,
+            last_bytes: 0,
+            last_ts: now,
+        }
+    }
+
+    /// 喂进累计字节数；到窗口期就结算一次。
+    /// 返回 true 表示「太慢，该放弃了」。
+    pub fn feed(&mut self, total_bytes: u64) -> bool {
+        let now = Instant::now();
+        if now.duration_since(self.start) < self.window {
+            return false;
+        }
+        let dt = now.duration_since(self.last_ts).as_secs_f64().max(0.001);
+        let db = total_bytes.saturating_sub(self.last_bytes) as f64;
+        let speed = db / dt;
+        self.start = now;
+        self.last_bytes = total_bytes;
+        self.last_ts = now;
+        speed < self.min_bytes_per_sec
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 磁盘类型策略：并发只降不升
+// ═══════════════════════════════════════════════════════════════
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiskKind {
+    Ssd,
+    Hdd,
+    Network,
+    Removable,
+    Unknown,
+}
+
+impl DiskKind {
+    /// 这类盘最多允许几个分片。机械盘/网络盘随机读代价高，分片反而更慢。
+    pub fn part_threads_cap(self) -> usize {
+        match self {
+            DiskKind::Ssd => usize::MAX,
+            DiskKind::Hdd | DiskKind::Network | DiskKind::Removable => 1,
+            DiskKind::Unknown => usize::MAX,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            DiskKind::Ssd => "ssd",
+            DiskKind::Hdd => "hdd",
+            DiskKind::Network => "network",
+            DiskKind::Removable => "removable",
+            DiskKind::Unknown => "unknown",
+        }
+    }
+}
+
+#[cfg(windows)]
+pub fn detect_disk_kind(path: &Path) -> DiskKind {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetDriveTypeW, DRIVE_FIXED, DRIVE_REMOTE, DRIVE_REMOVABLE,
+    };
+    // 取盘符：C:\...
+    let s = path.to_string_lossy().to_string();
+    let mut drive: Vec<u16> = s.chars().take(3).collect::<String>().encode_utf16().collect();
+    while drive.len() < 4 {
+        drive.push('\\' as u16);
+    }
+    drive.push(0);
+    let t = unsafe { GetDriveTypeW(drive.as_ptr()) };
+    if t == DRIVE_REMOTE {
+        DiskKind::Network
+    } else if t == DRIVE_REMOVABLE {
+        DiskKind::Removable
+    } else if t == DRIVE_FIXED {
+        DiskKind::Ssd // 固定盘默认按 SSD（不额外限制）
+    } else {
+        DiskKind::Unknown
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub fn detect_disk_kind(path: &Path) -> DiskKind {
+    // 找挂载点 → 设备 → /sys/block/<dev>/queue/rotational
+    let Ok(mounts) = fs::read_to_string("/proc/mounts") else {
+        return DiskKind::Unknown;
+    };
+    let p = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let ps = p.to_string_lossy().to_string();
+    let mut best: Option<(usize, String)> = None;
+    for line in mounts.lines() {
+        let mut it = line.split_whitespace();
+        let (Some(dev), Some(mnt)) = (it.next(), it.next()) else { continue };
+        if mnt.starts_with("/dev") && ps.starts_with(mnt) && mnt != "/" {
+            continue;
+        }
+        if ps.starts_with(mnt) {
+            let n = mnt.len();
+            if best.as_ref().map(|(l, _)| n > *l).unwrap_or(true) {
+                best = Some((n, dev.to_string()));
+            }
+        }
+    }
+    let Some((_, dev)) = best else { return DiskKind::Unknown };
+    if dev.starts_with("/dev/nfs") || dev.contains("cifs") || dev.contains("nfs") {
+        return DiskKind::Network;
+    }
+    let base = dev.rsplit('/').next().unwrap_or("");
+    let name: String = base.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let rot = fs::read_to_string(format!("/sys/block/{name}/queue/rotational"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u8>().ok());
+    match rot {
+        Some(0) => DiskKind::Ssd,
+        Some(_) => DiskKind::Hdd,
+        None => DiskKind::Unknown,
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+pub fn detect_disk_kind(_path: &Path) -> DiskKind {
+    DiskKind::Unknown
+}
+
+/// 目标目录实际允许的分片数（只降不升）
+pub fn part_threads_for(dir: &Path, want: usize) -> usize {
+    let cap = detect_disk_kind(dir).part_threads_cap();
+    want.min(cap).max(1)
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 单连接流式下载
 // ═══════════════════════════════════════════════════════════════
 
@@ -445,10 +601,19 @@ fn rand_f64() -> f64 {
     (n % 1000) as f64 / 1000.0
 }
 
+/// 请求用的 User-Agent。
+///
+/// 必须发：reqwest 默认不带 UA，清华镜像站（以及不少国内 CDN 的 WAF）
+/// 会直接回 403 —— 表现是「明明浏览器/curl 下得飞快，程序里一个字节都下不来」。
+/// 用浏览器串而不是自定义串，是为了过那种只放行常见 UA 的站点。
+const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
 fn build_client(opts: &Options) -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(opts.connect_timeout.max(1)))
         .timeout(Duration::from_secs(opts.per_url_timeout.max(1)))
+        .user_agent(UA)
         .build()
         .map_err(|e| e.to_string())
 }
@@ -528,6 +693,8 @@ fn stream_once(
     let mut got = 0u64;
     let started = Instant::now();
     let mut last_data = started;
+    // 单连接阶段用宽松阈值：1 KB/s 持续 5 秒才放弃
+    let mut speed = SpeedWindow::new(5, 1024.0);
 
     loop {
         if cancel.load(Ordering::SeqCst) {
@@ -543,6 +710,9 @@ fn stream_once(
                 last_data = Instant::now();
                 if let Some((p, id)) = progress {
                     p.add_part(id, n as u64);
+                }
+                if speed.feed(got) {
+                    return Attempt::Retry("连接太慢（低于 1 KB/s）".to_string());
                 }
             }
             Err(e) => {
@@ -561,7 +731,34 @@ fn stream_once(
 }
 
 /// 多源 + 重试：把任务下到 `.part`，成功后 rename 成目标文件。
-pub fn download_one(task: &DownloadTask, opts: &Options, cancel: std::sync::Arc<AtomicBool>) -> DownloadResult {
+///
+/// 自己建 HTTP 客户端。批量下载请走 [`run_batch`]，它会让所有文件
+/// 复用同一个连接池 —— 资源文件有三千多个，每个都重新握手会慢十倍。
+pub fn download_one(
+    task: &DownloadTask,
+    opts: &Options,
+    cancel: std::sync::Arc<AtomicBool>,
+) -> DownloadResult {
+    match build_client(opts) {
+        Ok(c) => download_one_with(&c, task, opts, cancel),
+        Err(e) => DownloadResult {
+            name: task.name.clone(),
+            path: task.target_dir.join(&task.name).to_string_lossy().to_string(),
+            size: 0,
+            ok: false,
+            error: format!("建不了 HTTP 客户端：{e}"),
+            bytes: 0,
+        },
+    }
+}
+
+/// 同 [`download_one`]，但用外面给的客户端（连接池共享）。
+pub fn download_one_with(
+    client: &reqwest::blocking::Client,
+    task: &DownloadTask,
+    opts: &Options,
+    cancel: std::sync::Arc<AtomicBool>,
+) -> DownloadResult {
     let target = task.target_dir.join(&task.name);
     let part = {
         let mut s = target.as_os_str().to_os_string();
@@ -582,10 +779,7 @@ pub fn download_one(task: &DownloadTask, opts: &Options, cancel: std::sync::Arc<
         let _ = fs::create_dir_all(parent);
     }
 
-    let client = match build_client(opts) {
-        Ok(c) => c,
-        Err(e) => return fail(format!("建不了 HTTP 客户端：{e}")),
-    };
+    let client = client.clone();
 
     let total_known = task.size;
     let mut network_bytes = 0u64;
@@ -705,7 +899,7 @@ pub fn download_one(task: &DownloadTask, opts: &Options, cancel: std::sync::Arc<
             probe_size(&client, url)
         };
         if let Some(total) = total {
-            if total > 0 && opts.part_threads > 1 {
+            if total > 0 && opts.part_threads > 1 && total >= opts.min_part_size {
                 let (done_ranges, _) = if opts.part_meta_enabled {
                     load_ranges(&part)
                 } else {
@@ -852,6 +1046,8 @@ fn fetch_part(
     let mut buf = vec![0u8; 256 * 1024];
     let mut got = 0u64;
     let mut last = Instant::now();
+    // 分片阶段严格一些：20 KB/s 持续 3 秒就换
+    let mut speed = SpeedWindow::new(3, 20.0 * 1024.0);
 
     loop {
         if cancel.load(Ordering::SeqCst) {
@@ -867,6 +1063,9 @@ fn fetch_part(
                 last = Instant::now();
                 if let Some((p, id)) = progress {
                     p.add_part(id, n as u64);
+                }
+                if speed.feed(got) {
+                    return Attempt::Retry("分片太慢".to_string());
                 }
             }
             Err(err) => return Attempt::Retry(format!("读取出错：{err}")),
@@ -893,7 +1092,10 @@ fn download_multi(
     opts: &Options,
     cancel: std::sync::Arc<AtomicBool>,
 ) -> Result<u64, String> {
-    let all = plan_parts(total, opts.part_threads);
+    // 机械盘/网络盘分片反而更慢：只降不升
+    let threads = part_threads_for(
+        part.parent().unwrap_or(Path::new(".")), opts.part_threads);
+    let all = plan_parts(total, threads);
     let todo: Vec<(u64, u64)> = all
         .iter()
         .copied()
@@ -1024,6 +1226,9 @@ pub fn run_batch(
     let slots = opts.multi_slots.max(1);
     let mut idx = 0usize;
 
+    // 连接池只建一次：三千多个小文件，每个都重新 TLS 握手会慢一个数量级
+    let shared = build_client(opts).ok();
+
     while idx < total {
         let end = (idx + slots).min(total);
         let chunk: Vec<DownloadTask> = tasks[idx..end].to_vec();
@@ -1038,8 +1243,12 @@ pub fn run_batch(
             let file_cb = on_file.clone();
             let total_n = total;
             let tb = total_bytes;
+            let cl = shared.clone();
             handles.push(std::thread::spawn(move || {
-                let r = download_one(&t, &opts_ref, cancel_ref.clone());
+                let r = match cl {
+                    Some(c) => download_one_with(&c, &t, &opts_ref, cancel_ref.clone()),
+                    None => download_one(&t, &opts_ref, cancel_ref.clone()),
+                };
                 let n = done_c.fetch_add(1, Ordering::SeqCst) + 1;
                 moved_c.fetch_add(r.bytes, Ordering::SeqCst);
                 if let Some(cb) = &prog {

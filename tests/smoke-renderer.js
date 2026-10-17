@@ -290,6 +290,31 @@ check('设置面板已移除、数据库位置在侧栏', () => {
   if (typeof W.App.changeDbLocation !== 'function') throw new Error('changeDbLocation 缺失');
 });
 
+// ── 安装整合包 ──
+check('安装整合包模块就位', () => {
+  const I = W.Installer;
+  if (!I || typeof I.open !== 'function') throw new Error('Installer.open 缺失');
+  if (typeof W.sanitizeInstance !== 'function') throw new Error('sanitizeInstance 未导出');
+  if (typeof W.loaderLabel !== 'function') throw new Error('loaderLabel 未导出');
+  if (!html.includes('id="nav-install"')) throw new Error('侧栏没有「安装整合包」入口');
+});
+
+check('实例名清洗', () => {
+  const s = W.sanitizeInstance;
+  if (s('a/b:c*?') !== 'a_b_c__') throw new Error('非法字符没清：' + s('a/b:c*?'));
+  if (s('  红石生电优化  ') !== '红石生电优化') throw new Error('空格没去');
+  if (s('') !== 'modpack') throw new Error('空名没有兜底');
+  if (s('..') !== 'modpack') throw new Error('全是点没有兜底');
+});
+
+check('加载器文案', () => {
+  const f = W.loaderLabel;
+  if (f('forge', '47.2.0') !== 'Forge 47.2.0') throw new Error('forge 文案错：' + f('forge', '47.2.0'));
+  if (f('vanilla', '') !== '原版') throw new Error('vanilla 文案错');
+  if (f('neoforge', '') !== 'NeoForge') throw new Error('neoforge 文案错');
+  if (f('fabric', '0.15.11') !== 'Fabric 0.15.11') throw new Error('fabric 文案错');
+});
+
 // ── DOM 引用完整性 ──
 // 桩里的 querySelector 永远返回假元素，所以「JS 引用了 HTML 里根本不存在的
 // 元素」这类 bug 在桩里跑不出来 —— 真机上却是 null.textContent 当场抛。

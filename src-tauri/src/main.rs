@@ -7,6 +7,8 @@ mod commands;
 mod db;
 mod differ;
 mod eapack;
+mod java;
+mod mcinstall;
 mod recent;
 mod ridex;
 mod updater;
@@ -46,6 +48,13 @@ fn main() {
             commands::fs_hash,
             commands::fs_unzip,
             commands::fs_space,
+            commands::mc_java_list,
+            commands::mc_java_need,
+            commands::mc_java_install,
+            commands::mc_versions,
+            commands::mc_pack_meta,
+            commands::mc_install,
+            commands::mc_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Pulses Easier");

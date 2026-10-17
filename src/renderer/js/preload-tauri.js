@@ -119,5 +119,17 @@ window.pulses = {
     getSpace:        (p) => invoke('fs_space', { path: p }),
   },
 
+  // ── 装游戏（整合包 → PCL 能扫到的实例）──
+  mc: {
+    versions:  (mirror) => invoke('mc_versions', { mirror }),
+    packMeta:  (p) => invoke('mc_pack_meta', { path: p }),
+    javaList:  () => invoke('mc_java_list'),
+    javaNeed:  (mc) => invoke('mc_java_need', { mc }),
+    javaInstall: (feature) => invoke('mc_java_install', { feature }),
+    install:   (opts) => invoke('mc_install', { opts }),
+    cancel:    () => invoke('mc_cancel'),
+    onProgress: (cb) => onEvent('mc:progress', cb),
+  },
+
   version: () => invoke('app_version'),
 };

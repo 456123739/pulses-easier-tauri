@@ -2662,9 +2662,10 @@ dependencies = [
 
 [[package]]
 name = "pulses-easier"
-version = "0.7.0-glass-beta"
+version = "0.11.0-beta"
 dependencies = [
  "dirs 5.0.1",
+ "libc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2676,6 +2677,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tokio",
  "walkdir",
+ "windows-sys 0.60.2",
  "zip",
 ]
 

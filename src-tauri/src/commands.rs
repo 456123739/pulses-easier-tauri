@@ -16,11 +16,32 @@ use crate::db;
 use crate::differ;
 use crate::ridex;
 use crate::eapack;
+use crate::java;
+use crate::mcinstall;
 use crate::recent;
 use crate::updater;
 
 /// 下载取消标志。RideX 要 Arc 才能跨线程共享，所以这里存一份。
 static CANCEL: Mutex<Option<std::sync::Arc<AtomicBool>>> = Mutex::new(None);
+
+/// 装游戏用的取消标志（和更新包下载分开，互不干扰）
+static MC_CANCEL: Mutex<Option<std::sync::Arc<AtomicBool>>> = Mutex::new(None);
+
+fn fresh_cancel(slot: &'static Mutex<Option<std::sync::Arc<AtomicBool>>>) -> std::sync::Arc<AtomicBool> {
+    let flag = std::sync::Arc::new(AtomicBool::new(false));
+    if let Ok(mut g) = slot.lock() {
+        *g = Some(flag.clone());
+    }
+    flag
+}
+
+fn trip_cancel(slot: &'static Mutex<Option<std::sync::Arc<AtomicBool>>>) {
+    if let Ok(g) = slot.lock() {
+        if let Some(f) = g.as_ref() {
+            f.store(true, Ordering::SeqCst);
+        }
+    }
+}
 
 // ── 版本 ──
 #[tauri::command]
@@ -152,10 +173,7 @@ pub fn update_estimate(plan: Value, old_root: String) -> Value {
 // ── 下载 ──
 #[tauri::command]
 pub async fn dl_start(app: AppHandle, tasks: Value, opts: Value) -> Result<Value, String> {
-    let flag = std::sync::Arc::new(AtomicBool::new(false));
-    if let Ok(mut g) = CANCEL.lock() {
-        *g = Some(flag.clone());
-    }
+    let flag = fresh_cancel(&CANCEL);
 
     let default_dir = std::env::temp_dir();
     let list = ridex::tasks_from_json(&tasks, &default_dir);
@@ -183,11 +201,7 @@ pub async fn dl_start(app: AppHandle, tasks: Value, opts: Value) -> Result<Value
 
 #[tauri::command]
 pub fn dl_cancel() -> bool {
-    if let Ok(g) = CANCEL.lock() {
-        if let Some(f) = g.as_ref() {
-            f.store(true, Ordering::SeqCst);
-        }
-    }
+    trip_cancel(&CANCEL);
     true
 }
 
@@ -324,4 +338,79 @@ pub fn fs_space(path: String) -> Value {
         Some((free, total)) => serde_json::json!({"free": free, "total": total}),
         None => serde_json::json!({"free": 0u64, "total": 0u64}),
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 整合包安装（Java / 原版 / 加载器）
+// ═══════════════════════════════════════════════════════════════
+
+/// 本机所有能找到的 Java，按主版本降序
+#[tauri::command]
+pub async fn mc_java_list() -> Value {
+    let list: Vec<Value> = java::find_all().iter().map(|j| j.to_json()).collect();
+    serde_json::json!({ "ok": true, "list": list })
+}
+
+/// 某个 MC 版本至少需要哪个 Java 主版本
+#[tauri::command]
+pub fn mc_java_need(mc: String) -> Value {
+    serde_json::json!({ "major": java::required_major(&mc) })
+}
+
+/// 自动装一份 Java（会下载 200 MB 左右）
+#[tauri::command]
+pub async fn mc_java_install(feature: u32) -> Result<Value, String> {
+    match java::install(feature) {
+        Ok(j) => Ok(serde_json::json!({ "ok": true, "java": j.to_json() })),
+        Err(e) => Ok(serde_json::json!({ "ok": false, "error": e })),
+    }
+}
+
+/// 版本清单（release）
+#[tauri::command]
+pub async fn mc_versions(mirror: Option<bool>) -> Value {
+    match mcinstall::list_versions(mirror.unwrap_or(true)) {
+        Ok(v) => v,
+        Err(e) => serde_json::json!({ "ok": false, "error": e, "versions": [] }),
+    }
+}
+
+/// 认一下这个文件夹是哪种整合包
+#[tauri::command]
+pub fn mc_pack_meta(path: String) -> Value {
+    mcinstall::pack_meta(&PathBuf::from(&path))
+}
+
+/// 装游戏本体 + 加载器，产出 versions/<实例名>/
+#[tauri::command]
+pub async fn mc_install(app: AppHandle, opts: Value) -> Result<Value, String> {
+    let target = mcinstall::Target::from_json(&opts);
+    let content = opts
+        .get("content")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+
+    let flag = fresh_cancel(&MC_CANCEL);
+
+    let app2 = app.clone();
+    let prog: mcinstall::Progress = std::sync::Arc::new(move |stage, done, total, bytes, tb| {
+        let _ = app2.emit(
+            "mc:progress",
+            serde_json::json!({
+                "stage": stage, "done": done, "total": total,
+                "bytes": bytes, "totalBytes": tb,
+            }),
+        );
+    });
+
+    let out = mcinstall::install(&target, content.as_deref(), Some(prog), flag);
+    let _ = app.emit("mc:done", &out);
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn mc_cancel() -> bool {
+    trip_cancel(&MC_CANCEL);
+    true
 }

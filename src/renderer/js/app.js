@@ -2,7 +2,7 @@
 // 负责：启动流程、身份切换、侧边栏、快捷键、数据库位置、日志分级
 
 // 构建戳：每次发版更新这里，装完能一眼确认是不是新包
-const BUILD_STAMP = 'build 0.10.2';
+const BUILD_STAMP = 'build 0.11.0';
 
 const App = {
   identity: 'player',
@@ -535,6 +535,7 @@ async function boot() {
       const el = document.getElementById(id);
       if (el) el.addEventListener('click', () => { App.markNav(id); fn(); });
     };
+    nav('nav-install',  () => Installer.open());
     nav('nav-locate',   () => Player.pickModpack());
     nav('nav-pickpack', () => Player.pickPack());
     nav('nav-newpack',  () => Developer.pickNew());
