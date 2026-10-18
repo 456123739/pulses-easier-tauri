@@ -27,7 +27,7 @@ const Installer = {
       return;
     }
     const zip = await window.pulses.dialog.openFile('选择整合包', [
-      { name: '整合包', extensions: ['zip'] },
+      { name: '整合包', extensions: ['zip', 'mrpack'] },
     ]);
     if (!zip) return;
 
@@ -327,7 +327,7 @@ function fmtSize(n) {
 // 从 zip 文件名里取个能当版本名的名字
 function zipName(p) {
   let n = baseName(String(p || ''));
-  n = n.replace(/\.(zip|eapack)$/i, '');
+  n = n.replace(/\.(zip|eapack|mrpack)$/i, '');
   n = n.replace(/_pulses_extract$/i, '');
   return n;
 }

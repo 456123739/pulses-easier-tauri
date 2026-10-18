@@ -1248,6 +1248,22 @@ pub fn install(
         }
     }
 
+    // ── 6. Modrinth：模组不在包里，按 files[] 一个个下 ──
+    if let Some(c) = content {
+        let idx_path = c.join("modrinth.index.json");
+        if let Ok(txt) = std::fs::read_to_string(&idx_path) {
+            if let Ok(idx) = serde_json::from_str::<Value>(&txt) {
+                let tasks = modrinth_tasks(&inst_dir, &idx);
+                if !tasks.is_empty() {
+                    say("下载整合包里的模组…");
+                    let (n, f2) = run_with(tasks, "下载整合包里的模组…", &prog, &cancel, 16);
+                    files += n;
+                    fails.extend(f2);
+                }
+            }
+        }
+    }
+
     if !inst_dir.exists() {
         let _ = std::fs::create_dir_all(&inst_dir);
     }
@@ -1285,6 +1301,97 @@ pub fn count_files(src: &Path) -> usize {
         }
     }
     n
+}
+
+/// 安全拼接相对路径：绝对路径、盘符、`..` 一律拒绝
+fn safe_rel(p: &str) -> Option<PathBuf> {
+    let n = p.replace('\\', "/");
+    if n.starts_with('/') || n.contains(':') {
+        return None;
+    }
+    let mut out = PathBuf::new();
+    for seg in n.split('/') {
+        if seg.is_empty() || seg == "." {
+            continue;
+        }
+        if seg == ".." {
+            return None;
+        }
+        out.push(seg);
+    }
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+/// Modrinth 的 .mrpack 里**没有模组文件**，只有一份清单和下载地址。
+/// 不处理 files[] 的话，装完 mods 是空的。
+pub fn modrinth_tasks(inst_dir: &Path, index: &Value) -> Vec<DownloadTask> {
+    let mut out = Vec::new();
+    let Some(arr) = index.get("files").and_then(|x| x.as_array()) else {
+        return out;
+    };
+    for f in arr {
+        // 只装客户端需要的
+        if let Some(c) = f
+            .get("env")
+            .and_then(|e| e.get("client"))
+            .and_then(|x| x.as_str())
+        {
+            if c == "unsupported" {
+                continue;
+            }
+        }
+        let path = match f.get("path").and_then(|x| x.as_str()) {
+            Some(p) if !p.is_empty() => p,
+            _ => continue,
+        };
+        let rel = match safe_rel(path) {
+            Some(r) => r,
+            None => continue,
+        };
+        let urls: Vec<String> = f
+            .get("downloads")
+            .and_then(|x| x.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|u| u.as_str())
+                    .map(|s| s.to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if urls.is_empty() {
+            continue;
+        }
+        let sha1 = f
+            .get("hashes")
+            .and_then(|h| h.get("sha1"))
+            .and_then(|x| x.as_str())
+            .unwrap_or("");
+        let size = f.get("fileSize").and_then(|x| x.as_u64()).unwrap_or(0);
+
+        let full = inst_dir.join(&rel);
+        let dir = full
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| inst_dir.to_path_buf());
+        let name = full
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if name.is_empty() {
+            continue;
+        }
+        let hash = if sha1.is_empty() {
+            String::new()
+        } else {
+            format!("sha1:{sha1}")
+        };
+        out.push(task(&dir, &name, urls, size, &hash));
+    }
+    out
 }
 
 /// 数一数实例里到底有几个模组（.jar / .jar.disabled）

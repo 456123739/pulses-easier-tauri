@@ -147,7 +147,7 @@ const Player = {
   // ── STEP 2 ──
   async pickPack() {
     const p = await window.pulses.dialog.openFile('选择更新包或整合包', [
-      { name: '更新包 / 整合包', extensions: ['zip', 'eapack'] },
+      { name: '更新包 / 整合包', extensions: ['zip', 'eapack', 'mrpack'] },
     ]);
     if (!p) return;
     await this.acceptFile(p);
