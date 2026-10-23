@@ -6,6 +6,8 @@ use std::fs;
 use std::path::Path;
 use tauri::{AppHandle, Emitter};
 
+use crate::config_exclude;
+
 /// 合并 `options.txt`：
 ///   · 玩家原有的**所有键位行**（以 `key_` 开头）原样保留
 ///   · 其余选项（FOV / 渲染距离 / GUI 缩放 / 音量…）全部用新包的
@@ -44,16 +46,58 @@ fn is_checked(checked: &Value, top: &str) -> bool {
     }
 }
 
+/// 更新策略。与 Python 的 Strategy 一一对应。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Strat {
+    /// 完全匹配：全部覆盖，含删除
+    Full,
+    /// 替换重名：只覆盖重名文件，不删除
+    Replace,
+    /// 跳过重名：跳过已存在文件
+    Skip,
+    /// 保留键位：覆盖内容，但本地 key_* 行原样保留
+    Merge,
+    /// 智能剔除：覆盖内容，但优化/渲染类模组的配置保持本地版本
+    Smart,
+}
+
+impl Strat {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Strat::Full => "完全匹配",
+            Strat::Replace => "替换重名",
+            Strat::Skip => "跳过重名",
+            Strat::Merge => "保留键位",
+            Strat::Smart => "智能剔除",
+        }
+    }
+}
+
 /// 某个顶层项的策略。未知/非法一律回退「完全匹配」（最保守）。
-fn strategy_of(strategies: &Value, top: &str) -> &'static str {
-    let raw = strategies
-        .get(top)
-        .and_then(|v| v.as_str())
-        .unwrap_or("full");
+pub fn strategy_of(strategies: &Value, top: &str) -> Strat {
+    // 界面没给这一项的策略时走默认值：config 是「智能剔除」，其余「完全匹配」。
+    // 老版本把这里写死成 "full"，等于智能剔除永远不生效。
+    let Some(raw) = strategies.get(top).and_then(|v| v.as_str()) else {
+        return default_strategy_for(top);
+    };
     match raw {
-        "skip" | "skip_same" | "跳过重名" => "skip",
-        "replace" | "replace_same" | "替换重名" => "replace",
-        _ => "full",
+        "skip" | "skip_same" | "跳过重名" => Strat::Skip,
+        "replace" | "replace_same" | "替换重名" => Strat::Replace,
+        "merge" | "merge_keys" | "保留键位" => Strat::Merge,
+        "smart" | "smart_exclude" | "智能剔除" => Strat::Smart,
+        _ => Strat::Full,
+    }
+}
+
+/// 某些顶层项的默认策略（界面没显式给值时用）。
+///
+/// config 默认「智能剔除」：优化/渲染类模组的配置按玩家机器调，
+/// 更新时保持本地版本；其余配置照常覆盖。
+pub fn default_strategy_for(top: &str) -> Strat {
+    if top.eq_ignore_ascii_case("config") {
+        Strat::Smart
+    } else {
+        Strat::Full
     }
 }
 
@@ -74,6 +118,7 @@ pub fn build_plan(diff: Value, checked: Value, strategies: Value,
                   old_root: &Path, new_root: &Path) -> Value {
     let mut tasks = Vec::new();
     let mut skipped = 0usize;
+    let mut smart: Vec<String> = Vec::new();
 
     let push_copy = |tasks: &mut Vec<Value>, rel: &str, size: u64| {
         tasks.push(json!({
@@ -106,7 +151,18 @@ pub fn build_plan(diff: Value, checked: Value, strategies: Value,
                 skipped += 1;
                 continue;
             }
-            if strategy_of(&strategies, top) == "skip" {
+            let strat = strategy_of(&strategies, top);
+            if strat == Strat::Skip {
+                skipped += 1;
+                continue;
+            }
+            // 智能剔除：本地的优化/渲染类配置一个都不动。
+            // 只保护**已经有了的**文件 —— 新装的优化模组要能拿到默认配置。
+            if strat == Strat::Smart
+                && config_exclude::is_protected(rel)
+                && old_root.join(rel).is_file()
+            {
+                smart.push(rel.to_string());
                 skipped += 1;
                 continue;
             }
@@ -126,7 +182,7 @@ pub fn build_plan(diff: Value, checked: Value, strategies: Value,
                 skipped += 1;
                 continue;
             }
-            if strategy_of(&strategies, top) != "full" {
+            if strategy_of(&strategies, top) != Strat::Full {
                 skipped += 1;
                 continue;
             }
@@ -138,9 +194,14 @@ pub fn build_plan(diff: Value, checked: Value, strategies: Value,
         }
     }
 
+    // 智能剔除了多少、保护了谁 —— 界面和日志都要能说清楚
+    let smart_note = config_exclude::summarize(smart.iter().map(|s| s.as_str()), 3);
+
     json!({
         "tasks": tasks,
         "skipped": skipped,
+        "smartSkipped": smart,
+        "smartSummary": smart_note,
         "oldRoot": old_root.to_string_lossy(),
         "newRoot": new_root.to_string_lossy(),
     })

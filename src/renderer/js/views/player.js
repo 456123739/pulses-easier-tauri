@@ -226,6 +226,20 @@ const Player = {
     const nMod = (diff.modified || []).length;
     const nDel = (diff.deleted || []).length;
     Log.ok(`比对完成：新增 ${nAdd} · 修改 ${nMod} · 删除 ${nDel}`);
+
+    // 预览「智能剔除」会放过哪些配置：本地已经有、且属于优化/渲染类模组
+    this.state.smart = new Set();
+    try {
+      const rels = (diff.modified || []).map(f => f.rel).filter(Boolean);
+      const r = await window.pulses.update.smartCheck(rels, this.state.modpackPath);
+      if (r && r.skipped) {
+        this.state.smart = new Set(r.skipped);
+        if (r.summary) {
+          Log.ok(`config 使用「智能剔除」：${r.summary} 保持你本地的版本`);
+        }
+      }
+    } catch (_) { /* 预览失败不影响更新 */ }
+
     this._renderChanges(diff);
 
     // 更新日志预览
@@ -241,6 +255,7 @@ const Player = {
     this.state.updateZip = null;
     this.state.extractedDir = null;
     this.state.diff = null;
+    this.state.smart = new Set();
     document.getElementById('pack-name').textContent = '';
     document.getElementById('btn-clear-pack').classList.add('is-hidden');
     this._renderChanges({ added: [], modified: [], deleted: [], unchanged: [] }, []);
@@ -253,6 +268,7 @@ const Player = {
   _renderChanges(diff, errors) {
     const box = document.getElementById('change-list');
     if (!box) return;
+    const smart = this.state.smart || new Set();
 
     const add = diff.added || [];
     const mod = diff.modified || [];
@@ -297,7 +313,7 @@ const Player = {
       n++;
     }
 
-    // 变更项（紫色）
+    // 变更项（紫色）；被智能剔除的再加一个标记，不展开也看得见
     const push = (list, label) => {
       for (const f of list) {
         if (n >= MAX) return;
@@ -313,6 +329,12 @@ const Player = {
         t.title = f.rel;
         row.appendChild(b);
         row.appendChild(t);
+        if (smart.has(f.rel)) {
+          const s = document.createElement('span');
+          s.className = 'change-badge smart';
+          s.textContent = '智能剔除';
+          row.appendChild(s);
+        }
         box.appendChild(row);
         n++;
       }

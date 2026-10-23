@@ -13,6 +13,7 @@ use tauri::Emitter;
 use tauri::AppHandle;
 
 use crate::db;
+use crate::config_exclude;
 use crate::differ;
 use crate::ridex;
 use crate::eapack;
@@ -193,7 +194,7 @@ pub async fn dl_start(app: AppHandle, tasks: Value, opts: Value) -> Result<Value
         },
     );
 
-    let batch = ridex::run_batch(list, &o, flag, Some(prog), None);
+    let batch = crate::engine::run(list, &o, flag, Some(prog), None);
     let out = ridex::batch_to_json(&batch);
     let _ = app.emit("dl:done", &out);
     Ok(out)
@@ -203,6 +204,20 @@ pub async fn dl_start(app: AppHandle, tasks: Value, opts: Value) -> Result<Value
 pub fn dl_cancel() -> bool {
     trip_cancel(&CANCEL);
     true
+}
+
+/// 预览「智能剔除」会保护哪些 config：本地已有、且属于优化/渲染类模组的配置。
+///
+/// 变更列表在生成计划之前就要能标出来，所以单独给一个轻量查询。
+#[tauri::command(async)]
+pub fn smart_exclude_check(rels: Vec<String>, old_root: String) -> Value {
+    let root = PathBuf::from(&old_root);
+    let skipped: Vec<String> = rels
+        .into_iter()
+        .filter(|r| config_exclude::is_protected(r) && root.join(r).is_file())
+        .collect();
+    let note = config_exclude::summarize(skipped.iter().map(|s| s.as_str()), 3);
+    serde_json::json!({ "skipped": skipped, "summary": note })
 }
 
 // ── 更新包 ──

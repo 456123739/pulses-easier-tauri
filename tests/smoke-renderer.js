@@ -291,6 +291,41 @@ check('设置面板已移除、数据库位置在侧栏', () => {
 });
 
 // ── 安装整合包 ──
+check('智能剔除在变更列表里标出来', () => {
+  const P = W.Player;
+  const box = elFor('change-list');
+  box.children = [];
+
+  P.state.smart = new Set(['config/sodium-options.json']);
+  P._renderChanges({
+    added: [], deleted: [], unchanged: [],
+    modified: [
+      { rel: 'config/sodium-options.json' },
+      { rel: 'config/jei.toml' },
+    ],
+  }, []);
+
+  const rows = (box.children || []).filter(r =>
+    (r.className || '').indexOf('change-row') >= 0);
+  const marked = rows.filter(r =>
+    (r.children || []).some(c => (c.className || '').indexOf('smart') >= 0));
+  const names = marked.map(r =>
+    (r.children || []).map(c => c.textContent).join('|'));
+
+  if (marked.length !== 1) {
+    throw new Error('标记了 ' + marked.length + ' 行，应该只有 1 行');
+  }
+  if (names[0].indexOf('sodium-options.json') < 0) {
+    throw new Error('标错了行：' + names[0]);
+  }
+  if (names[0].indexOf('智能剔除') < 0) {
+    throw new Error('没有「智能剔除」字样：' + names[0]);
+  }
+
+  P.state.smart = new Set();
+  P._renderChanges({ added: [], modified: [], deleted: [], unchanged: [] }, []);
+});
+
 check('安装整合包模块就位', () => {
   const I = W.Installer;
   if (!I || typeof I.open !== 'function') throw new Error('Installer.open 缺失');

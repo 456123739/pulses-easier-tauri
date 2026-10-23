@@ -642,6 +642,7 @@ body.is-booting .titlebar { display: none; }
 .change-badge.unchanged { color: var(--green); }
 .change-badge.changed   { color: var(--purple); }
 .change-badge.error     { color: var(--red); }
+.change-badge.smart     { color: var(--accent); }
 .change-name {
   flex: 1 1 auto; min-width: 0;
   color: var(--label-2);

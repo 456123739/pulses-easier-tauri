@@ -3,12 +3,16 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod aster;
 mod commands;
+mod config_exclude;
 mod db;
 mod differ;
+mod engine;
 mod eapack;
 mod java;
 mod mcinstall;
+mod mirrors;
 mod recent;
 mod ridex;
 mod updater;
@@ -36,6 +40,7 @@ fn main() {
             commands::update_execute,
             commands::update_verify,
             commands::update_estimate,
+            commands::smart_exclude_check,
             commands::dl_start,
             commands::dl_cancel,
             commands::pack_kind,

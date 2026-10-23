@@ -58,6 +58,9 @@ window.pulses = {
       invoke('update_verify', { plan, oldRoot, newRoot }),
     estimate:  (plan, oldRoot) =>
       invoke('update_estimate', { plan, oldRoot }),
+    // 预览智能剔除会保护哪些 config
+    smartCheck: (rels, oldRoot) =>
+      invoke('smart_exclude_check', { rels, oldRoot }),
     onProgress: (cb) => onEvent('update:progress', cb),
     onDone:     (cb) => onEvent('update:done', cb),
   },

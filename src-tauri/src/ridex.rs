@@ -34,8 +34,6 @@ use std::time::{Duration, Instant};
 pub struct Options {
     /// 多线程槽位数（同时下几个文件）
     pub multi_slots: usize,
-    /// 单线程重试槽位数
-    pub single_slots: usize,
     /// 单个文件的分片线程数
     pub part_threads: usize,
     /// 全局最大连接数
@@ -58,6 +56,14 @@ pub struct Options {
     pub part_meta_enabled: bool,
     /// 小于这个大小就不分片。几千个几 KB 的资源文件分片纯属浪费
     pub min_part_size: u64,
+    /// 镜像优先：Modrinth 地址先换成镜像候选，官方兜底
+    pub mirror_first: bool,
+    /// 设置里临时追加的镜像前缀（排在表前面）
+    pub mirror_hosts: Vec<String>,
+    /// Aster 引擎的全局线程预算
+    pub aster_threads: usize,
+    /// 下载引擎：ridex / aster
+    pub engine: String,
     pub hash_algo: String,
 }
 
@@ -65,7 +71,6 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             multi_slots: 16,
-            single_slots: 4,
             part_threads: 4,
             max_connections: 128,
             connect_timeout: 10,
@@ -78,6 +83,10 @@ impl Default for Options {
             range_validate: true,
             part_meta_enabled: true,
             min_part_size: 1_048_576,
+            mirror_first: true,
+            mirror_hosts: Vec::new(),
+            aster_threads: 32,
+            engine: "ridex".to_string(),
             hash_algo: "sha1".to_string(),
         }
     }
@@ -91,7 +100,10 @@ impl Options {
             v.get(k).and_then(|x| x.as_u64()).map(|x| x as usize).unwrap_or(d)
         };
         o.multi_slots = get_u("multi_slots", o.multi_slots).max(1);
-        o.single_slots = get_u("single_slots", o.single_slots).max(1);
+        o.aster_threads = get_u("aster_threads", o.aster_threads).max(1);
+        if let Some(e) = v.get("engine").and_then(|x| x.as_str()) {
+            o.engine = e.to_string();
+        }
         o.part_threads = get_u("part_threads", o.part_threads).max(1);
         o.max_connections = get_u("max_connections", o.max_connections).max(1);
         o.connect_timeout = get_u("connect_timeout", o.connect_timeout as usize) as u64;
@@ -109,6 +121,31 @@ impl Options {
         }
         if let Some(b) = v.get("min_part_size").and_then(|x| x.as_u64()) {
             o.min_part_size = b;
+        }
+        // 镜像优先：数字 0/1 和布尔都收
+        if let Some(x) = v.get("mirror_first") {
+            if let Some(n) = x.as_u64() {
+                o.mirror_first = n != 0;
+            } else if let Some(b) = x.as_bool() {
+                o.mirror_first = b;
+            }
+        }
+        if let Some(x) = v.get("mirror_hosts") {
+            let raw = if let Some(a) = x.as_array() {
+                a.iter()
+                    .filter_map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(";")
+            } else {
+                x.as_str().unwrap_or("").to_string()
+            };
+            o.mirror_hosts = raw
+                .replace('；', ";")
+                .replace(',', ";")
+                .split(';')
+                .map(|p| p.trim().trim_end_matches('/').to_string())
+                .filter(|p| !p.is_empty())
+                .collect();
         }
         if let Some(a) = v.get("hash_algo").and_then(|x| x.as_str()) {
             if !a.is_empty() {
@@ -754,6 +791,7 @@ pub fn download_one(
     opts: &Options,
     cancel: std::sync::Arc<AtomicBool>,
 ) -> DownloadResult {
+    crate::mirrors::configure(opts.mirror_first, &opts.mirror_hosts);
     match build_client(opts) {
         Ok(c) => download_one_with(&c, task, opts, cancel),
         Err(e) => DownloadResult {
@@ -824,8 +862,11 @@ pub fn download_one_with(
         })
     };
 
+    // 镜像优先：Modrinth 的地址先换成镜像候选，官方永远留在最后兜底
+    let urls = crate::mirrors::ordered(task.urls.clone());
+
     // G1：每个候选 URL 独立跑完整套重试，一个不行换下一个
-    for url in &task.urls {
+    for url in &urls {
         if cancel.load(Ordering::SeqCst) {
             return fail("已取消".to_string());
         }
@@ -876,7 +917,10 @@ pub fn download_one_with(
                         let _ = file.sync_all();
                         drop(file);
                         match finish(&part, network_bytes) {
-                            Ok(r) => return r,
+                            Ok(r) => {
+                                crate::mirrors::note_success(url);
+                                return r;
+                            }
                             Err(why) => {
                                 last_error = why;
                                 break;
@@ -904,6 +948,7 @@ pub fn download_one_with(
 
         // 404/403 是「这个源彻底没戏」，别再浪费请求试分片
         if last_error.starts_with("HTTP 4") {
+            crate::mirrors::note_failure(url);
             continue;
         }
 
@@ -929,7 +974,10 @@ pub fn download_one_with(
                             save_ranges(&part, &[(0, total)], total);
                         }
                         match finish(&part, network_bytes) {
-                            Ok(r) => return r,
+                            Ok(r) => {
+                                crate::mirrors::note_success(url);
+                                return r;
+                            }
                             Err(why) => last_error = why,
                         }
                     }
@@ -1232,6 +1280,8 @@ pub fn run_batch(
     on_progress: Option<ProgressCb>,
     on_file: Option<FileCb>,
 ) -> Batch {
+    crate::mirrors::configure(opts.mirror_first, &opts.mirror_hosts);
+
     let total = tasks.len();
     let total_bytes: u64 = tasks.iter().map(|t| t.size).sum();
     let done = Arc::new(AtomicU64::new(0));

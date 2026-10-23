@@ -6,7 +6,7 @@ on:
       version:
         description: 版本号（如 0.10.2）
         required: false
-        default: "0.11.6"
+        default: "0.11.7"
   push:
     tags: ["v*"]
 
@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           $ver = "${{ github.ref_name }}".TrimStart("v")
-          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.11.6" }
+          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.11.7" }
           $out = "pulses-easier-$ver-portable-win64"
           New-Item -ItemType Directory -Force -Path "dist/$out" | Out-Null
           Copy-Item "src-tauri/target/release/pulses-easier.exe" "dist/$out/Pulses Easier.exe"

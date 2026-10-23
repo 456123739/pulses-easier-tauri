@@ -866,7 +866,7 @@ fn run_with(
     });
     let mut opts = ridex::Options::default();
     opts.multi_slots = slots.max(1);
-    let batch = ridex::run_batch(tasks, &opts, cancel.clone(), Some(cb), None);
+    let batch = crate::engine::run(tasks, &opts, cancel.clone(), Some(cb), None);
     let fails = batch
         .results
         .iter()

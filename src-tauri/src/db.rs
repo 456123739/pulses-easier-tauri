@@ -62,9 +62,16 @@ fn atomic_write_json(path: &Path, val: &Value) -> bool {
 fn default_config() -> Value {
     json!({
         "download": {
-            "multi_slots": 16, "single_slots": 4,
+            // 引擎：ridex 锐驰（默认）/ aster 星驰
+            "engine": "ridex",
+            "multi_slots": 16,
             "part_threads": 4, "max_connections": 128,
+            "aster_threads": 32,
             "connect_timeout": 10, "read_idle_timeout": 20,
+            // 镜像优先：Modrinth 资源先走镜像，挂了自动退回官方
+            "mirror_first": 1,
+            "mirror_hosts": "",
+            "min_part_size": 1048576,
         },
         "compare": { "hash_algo": "sha1", "hash_threads": 4 },
         "ui": { "reduce_motion": false, "theme": "dark" },
