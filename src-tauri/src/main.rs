@@ -14,7 +14,9 @@ mod java;
 mod mcinstall;
 mod mirrors;
 mod recent;
+mod recover;
 mod ridex;
+mod transfer;
 mod updater;
 
 fn main() {
@@ -41,6 +43,12 @@ fn main() {
             commands::update_verify,
             commands::update_estimate,
             commands::smart_exclude_check,
+            commands::pack_leftovers,
+            commands::pack_recover,
+            commands::pack_marker_check,
+            commands::pack_marker_clear,
+            commands::pack_marker_write,
+            commands::update_checkpoint,
             commands::dl_start,
             commands::dl_cancel,
             commands::pack_kind,

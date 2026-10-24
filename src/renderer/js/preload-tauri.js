@@ -59,6 +59,8 @@ window.pulses = {
     estimate:  (plan, oldRoot) =>
       invoke('update_estimate', { plan, oldRoot }),
     // 预览智能剔除会保护哪些 config
+    checkpoint: (path, stage, done, total) =>
+      invoke('update_checkpoint', { path, stage, done, total }),
     smartCheck: (rels, oldRoot) =>
       invoke('smart_exclude_check', { rels, oldRoot }),
     onProgress: (cb) => onEvent('update:progress', cb),
@@ -72,6 +74,12 @@ window.pulses = {
     cleanExtract:  (p) => invoke('pack_clean_extract', { path: p }),
     // 认一下拖进来的是整合包还是更新包（只看 zip 条目名，不解压）
     kind:          (p) => invoke('pack_kind', { path: p }),
+    // 中断恢复
+    leftovers:     (p) => invoke('pack_leftovers', { path: p }),
+    recover:       (p) => invoke('pack_recover', { path: p }),
+    markerCheck:   (p) => invoke('pack_marker_check', { path: p }),
+    markerClear:   (p) => invoke('pack_marker_clear', { path: p }),
+    markerWrite:   (p, opts) => invoke('pack_marker_write', { path: p, opts }),
     onProgress:    (cb) => onEvent('pack:progress', cb),
     readSettings:  (p) => invoke('pack_read_entry', { path: p, entry: 'settings.json' }).then(parseJSON),
     readManifest:  (p) => invoke('pack_read_entry', { path: p, entry: 'manifest.json' }).then(parseJSON),

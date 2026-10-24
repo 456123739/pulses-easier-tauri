@@ -20,6 +20,7 @@ use crate::eapack;
 use crate::java;
 use crate::mcinstall;
 use crate::recent;
+use crate::recover;
 use crate::updater;
 
 /// 下载取消标志。RideX 要 Arc 才能跨线程共享，所以这里存一份。
@@ -243,6 +244,58 @@ pub fn pack_clean_extract(path: String) -> Value {
 #[tauri::command]
 pub async fn pack_export(app: AppHandle, opts: Value) -> Result<Value, String> {
     Ok(eapack::export(&app, opts).await)
+}
+
+// ── 中断恢复 ──
+
+/// 找出上次被强杀留下的残渣
+#[tauri::command(async)]
+pub fn pack_leftovers(path: String) -> Value {
+    recover::find_leftovers(&PathBuf::from(&path))
+}
+
+/// 清理残渣：回滚没做完的目录替换、删掉搬运临时文件
+#[tauri::command(async)]
+pub fn pack_recover(path: String) -> Value {
+    recover::recover_leftovers(&PathBuf::from(&path))
+}
+
+/// 核对「更新未完成」凭证里的文件是否已补齐
+#[tauri::command(async)]
+pub fn pack_marker_check(path: String) -> Value {
+    recover::check_marker(&PathBuf::from(&path))
+}
+
+#[tauri::command(async)]
+pub fn pack_marker_clear(path: String) -> bool {
+    recover::clear_marker(&PathBuf::from(&path))
+}
+
+/// 写「更新未完成」凭证。opts: {packName, version, zip, fingerprint, cacheRoot, missing}
+#[tauri::command(async)]
+pub fn pack_marker_write(path: String, opts: Value) -> bool {
+    let g = |k: &str| opts.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let missing = opts
+        .get("missing")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let m = recover::build_marker(
+        &PathBuf::from(&path),
+        &g("packName"),
+        &g("version"),
+        &g("zip"),
+        &g("fingerprint"),
+        &g("cacheRoot"),
+        missing,
+    );
+    recover::write_marker(&PathBuf::from(&path), &m)
+}
+
+/// 更新检查点：stage 传 apply / done
+#[tauri::command(async)]
+pub fn update_checkpoint(path: String, stage: String, done: u64, total: u64) -> bool {
+    recover::save_checkpoint(&PathBuf::from(&path), &stage, done, total)
 }
 
 // ── 文件系统 ──

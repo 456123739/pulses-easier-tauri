@@ -110,6 +110,7 @@ const Player = {
     Log.ok('已定位整合包：' + title);
 
     await Recent.add(path);
+    await this._checkRecovery(path);
     this._refreshSteps();
   },
 
@@ -142,6 +143,31 @@ const Player = {
     try { r = dz.getBoundingClientRect(); } catch (_) { return false; }
     if (!r) return false;
     return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  },
+
+  // 定位整合包时顺手做一次自检：上次更新有没有留残渣、有没有没下完的文件
+  async _checkRecovery(path) {
+    try {
+      const left = await window.pulses.pack.leftovers(path);
+      const n = (left.dirs || []).length + (left.files || []).length;
+      if (n > 0) {
+        const r = await window.pulses.pack.recover(path);
+        if (r && (r.restored || r.removed)) {
+          Log.warn(`上次更新没收尾：回滚 ${r.restored} 个目录替换，清掉 ${r.removed} 个临时文件`);
+        }
+      }
+    } catch (_) { /* 自检失败不影响定位 */ }
+
+    try {
+      const m = await window.pulses.pack.markerCheck(path);
+      if (m && m.ok && !m.all_done) {
+        Log.warn(`这个整合包上次有 ${m.remaining.length} 个文件没下载完`);
+        Log.warn('补齐后会自动清理凭证，详情见根目录的「!!!更新未完成-请阅读!!!.txt」');
+      } else if (m && m.ok && m.all_done && m.total > 0) {
+        await window.pulses.pack.markerClear(path);
+        Log.ok('上次没下完的文件已补齐，凭证已清理');
+      }
+    } catch (_) {}
   },
 
   // ── STEP 2 ──
@@ -406,6 +432,7 @@ const Player = {
       Log.debug(`计划：${total} 个文件`);
 
       Log.debug('开始应用更新…');
+      try { await window.pulses.update.checkpoint(oldRoot, 'apply', 0, total); } catch (_) {}
       const res = await window.pulses.update.execute(plan, oldRoot, newRoot);
 
       if (res && res.ok) {
@@ -414,8 +441,10 @@ const Player = {
         Log.ok(`更新完成：${res.done} 个文件已处理`);
         App.setStatus('更新完成');
 
+        try { await window.pulses.update.checkpoint(oldRoot, 'done', total, total); } catch (_) {}
+
         // 解压目录用完就删，不占磁盘
-        try { await window.pulses.pack.cleanExtract(root); } catch (_) { /* 忽略 */ }
+        try { await window.pulses.pack.cleanExtract(newRoot); } catch (_) { /* 忽略 */ }
 
         // 回到「请拖入下一个更新包」
         // 取元素必须判空：之前 .drop-sub 在 HTML 里根本不存在，
@@ -433,6 +462,18 @@ const Player = {
         setTimeout(() => panel.classList.add('is-hidden'), 1800);
       } else {
         Log.error('更新失败');
+        // 失败的文件写进凭证，玩家下次定位就能看到还差什么
+        try {
+          const missing = (res && res.failed ? res.failed : []).map(e => ({
+            rel: e.rel, size: 0, sha1: '', urls: [],
+          }));
+          if (missing.length) {
+            await window.pulses.pack.markerWrite(oldRoot, {
+              packName: baseName(oldRoot), version: '', zip: this.state.updateZip || '',
+              fingerprint: '', cacheRoot: '', missing,
+            });
+          }
+        } catch (_) {}
         ptext.textContent = '更新失败';
         setBtnLabel(btn, '重试');
         btn.disabled = false;

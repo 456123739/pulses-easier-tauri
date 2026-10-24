@@ -7,6 +7,7 @@ use std::path::Path;
 use tauri::{AppHandle, Emitter};
 
 use crate::config_exclude;
+use crate::transfer;
 
 /// 合并 `options.txt`：
 ///   · 玩家原有的**所有键位行**（以 `key_` 开头）原样保留
@@ -241,8 +242,10 @@ pub async fn execute_plan(app: &AppHandle, plan: Value,
                 }
                 if let Ok(st) = fs::metadata(src) {
                     let size = st.len();
-                    let ok = if t.get("rel").and_then(|v| v.as_str()) == Some("options.txt") {
-                        // 合并而不是覆盖：键位留玩家的，画质用新包的
+                    let rel = t.get("rel").and_then(|v| v.as_str()).unwrap_or("");
+                    if rel == "options.txt" {
+                        // 合并而不是覆盖：键位留玩家的，画质用新包的。
+                        // 仍然先写临时名再 rename，避免中途被杀留下半截文件。
                         let new_text = fs::read_to_string(src).unwrap_or_default();
                         let old_text = fs::read_to_string(dst).unwrap_or_default();
                         let body = if old_text.trim().is_empty() {
@@ -250,14 +253,29 @@ pub async fn execute_plan(app: &AppHandle, plan: Value,
                         } else {
                             merge_options(&old_text, &new_text)
                         };
-                        fs::write(dst, body).is_ok()
+                        let tmp = transfer::tmp_name(Path::new(dst));
+                        match fs::write(&tmp, body).and_then(|_| fs::rename(&tmp, dst)) {
+                            Ok(()) => moved_bytes += size,
+                            Err(e) => {
+                                let _ = fs::remove_file(&tmp);
+                                failed.push(json!({
+                                    "rel": rel,
+                                    "error": transfer::friendly_error(&e, "写入失败"),
+                                }));
+                            }
+                        }
                     } else {
-                        fs::copy(src, dst).is_ok()
-                    };
-                    if ok {
-                        moved_bytes += size;
-                    } else if let Some(rel) = t.get("rel").and_then(|v| v.as_str()) {
-                        failed.push(json!({"rel": rel, "error": "写入失败"}));
+                        // 走搬运层：同卷 rename 瞬时完成，跨卷分块复制 + 原子替换
+                        let r = transfer::move_in(
+                            Path::new(src),
+                            Path::new(dst),
+                            &transfer::MoveOpts::default(),
+                        );
+                        if r.ok {
+                            moved_bytes += size;
+                        } else {
+                            failed.push(json!({"rel": rel, "error": r.error}));
+                        }
                     }
                 } else if let Some(rel) = t.get("rel").and_then(|v| v.as_str()) {
                     failed.push(json!({"rel": rel, "error": "源文件不存在"}));
